@@ -1,8 +1,9 @@
-# Thingino Streamer: Pure C H.264 RTSP Streaming Server
+# Thingino Streamer
 
-**World-class H.264 RTSP streaming performance on embedded devices**
+Pure C H.264/H.265 RTSP/RTMP/MJPEG Streaming Server
+---------------------------------------------------
 
-**thingino streamer** is a high-performance, pure C implementation of an H.264 RTSP streaming server optimized for embedded IP cameras.
+**thingino streamer** is a high-performance, pure C implementation of a streaming server optimized for embedded IP cameras.
 
 ## 🏆 Performance Achievements
 
