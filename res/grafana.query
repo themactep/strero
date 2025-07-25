@@ -1,0 +1,11 @@
+# Frame rate over time
+streamer_fps{channel="0"}
+
+# Calculated bitrate (approximate)
+streamer_frame_size_bytes * streamer_fps * 8 / 1000
+
+# Frame processing rate
+rate(streamer_frame_count[1m]) * 60
+
+# System health (should be 0)
+streamer_error_count

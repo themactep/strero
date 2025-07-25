@@ -1,0 +1,24 @@
+# IMP Control nodule build configuration
+# Copyright (C) 2025 Paul Philippov, Thingino Project
+
+# Module object files
+IMP_CONTROL_OBJECTS = obj/modules/imp_control/imp_control.o
+
+# Add module objects to the main build
+OBJS += $(IMP_CONTROL_OBJECTS)
+
+# Module compilation rules
+obj/modules/imp_control/imp_control.o: src/modules/imp_control/imp_control.c src/modules/imp_control/imp_control.h
+	@mkdir -p obj/modules/imp_control
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+# Clean rule for module
+clean-imp-control:
+	rm -f $(IMP_CONTROL_OBJECTS)
+
+.PHONY: clean-imp-control

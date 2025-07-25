@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "port": 554,
+  "session_reclaim": 65,
+  "auth": {
+    "enabled": false,
+    "localhost_bypass": true,
+    "username": "admin",
+    "password": "admin"
+  },
+  "server_name": "Thingino RTSP Server",
+  "max_clients": 8,
+  "max_sessions": 16,
+  "cert_file": "/etc/ssl/certs/rtsp-server.crt",
+  "key_file": "/etc/ssl/private/rtsp-server.key",
+  "tls_verify_client": false,
+  "tls_enabled": true,
+  "tls_port": 322
+}

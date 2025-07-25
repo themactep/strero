@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "auth": {
+    "enabled": false,
+    "localhost_bypass": true,
+    "username": "admin",
+    "password": "admin"
+  },
+  "device_name": "Thingino Camera",
+  "device_location": "Embedded",
+  "manufacturer": "Thingino",
+  "model": "Streamer",
+  "serial_number": "123456789",
+  "firmware_version": "1.0.0",
+  "hardware_id": "thingino-hw1"
+}

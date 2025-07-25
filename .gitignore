@@ -53,3 +53,11 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+bin/
+obj/
+.vscode/
+.trunk/
+include/*/version.hpp
+tmp/
+*.log

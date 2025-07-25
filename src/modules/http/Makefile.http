@@ -1,0 +1,33 @@
+# HTTP Server module build configuration
+# Copyright (C) 2025 Paul Philippov, Thingino Project
+
+# Module object files
+HTTP_OBJECTS = obj/modules/http/http_module.o obj/modules/http/http_router.o
+
+# Add module objects to the main build
+OBJS += $(HTTP_OBJECTS)
+
+# Module compilation rules
+obj/modules/http/http_module.o: src/modules/http/http_module.c src/modules/http/http_module.h src/modules/http/http_router.h
+	@mkdir -p obj/modules/http
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+obj/modules/http/http_router.o: src/modules/http/http_router.c src/modules/http/http_router.h
+	@mkdir -p obj/modules/http
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+# Clean rule for module
+clean-http:
+	rm -f $(HTTP_OBJECTS)
+
+.PHONY: clean-http

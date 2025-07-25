@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "monitor_stream": 1,
+  "sensitivity": 3,
+  "skip_frame_count": 5,
+  "ivs_polling_timeout": 1000,
+  "cooldown_time": 5,
+  "debounce_time": 0,
+  "init_time": 5,
+  "min_time": 1,
+  "post_time": 0,
+  "script_path": "/usr/sbin/motion"
+}

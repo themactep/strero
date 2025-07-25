@@ -1,0 +1,60 @@
+# ONVIF module build configuration
+# Copyright (C) 2025 Paul Philippov, Thingino Project
+
+# ONVIF module source files
+ONVIF_SOURCES = src/modules/onvif/onvif_module.c \
+                src/modules/onvif/onvif_discovery.c \
+                src/modules/onvif/onvif_services.c
+
+# ONVIF module object files  
+ONVIF_OBJECTS = obj/modules/onvif/onvif_module.o \
+                obj/modules/onvif/onvif_discovery.o \
+                obj/modules/onvif/onvif_services.o
+
+# Don't add sources to C_SOURCES_MODULES - we handle objects directly
+
+# ONVIF module specific compiler flags  
+ONVIF_CFLAGS = -DENABLE_ONVIF
+
+# Add ONVIF flags to global CFLAGS
+CFLAGS += $(ONVIF_CFLAGS)
+
+# Create ONVIF module object directory
+$(shell mkdir -p obj/modules/onvif)
+
+# ONVIF module dependencies
+ONVIF_DEPS = src/modules/onvif/onvif_module.h src/module_system.h
+
+# ONVIF module object compilation rules
+obj/modules/onvif/onvif_module.o: src/modules/onvif/onvif_module.c $(ONVIF_DEPS)
+	@echo "Compiling ONVIF module: $<"
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+obj/modules/onvif/onvif_discovery.o: src/modules/onvif/onvif_discovery.c $(ONVIF_DEPS)
+	@echo "Compiling ONVIF discovery: $<"
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+obj/modules/onvif/onvif_services.o: src/modules/onvif/onvif_services.c $(ONVIF_DEPS)
+	@echo "Compiling ONVIF services: $<"
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+# Clean ONVIF module objects
+clean-onvif:
+	rm -f $(ONVIF_OBJECTS)
+
+.PHONY: clean-onvif

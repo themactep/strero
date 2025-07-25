@@ -1,0 +1,43 @@
+# Audio module build configuration
+# Copyright (C) 2025 Paul Philippov, Thingino Project
+
+# Audio module source files
+AUDIO_SOURCES = src/modules/audio/audio_module.c
+
+# Audio module object files
+AUDIO_OBJECTS = obj/modules/audio/audio_module.o
+
+# Don't add sources to C_SOURCES_MODULES - we handle objects directly
+
+# Create audio module object directory
+$(shell mkdir -p obj/modules/audio)
+
+# Audio module object build rule
+obj/modules/audio/audio_module.o: src/modules/audio/audio_module.c $(AUDIO_DEPS)
+	@echo "Compiling audio module: $<"
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+# Audio module specific compiler flags
+AUDIO_CFLAGS = -DENABLE_AUDIO
+
+# Add audio flags to main CFLAGS
+CFLAGS += $(AUDIO_CFLAGS)
+
+# Audio module dependencies
+AUDIO_DEPS = src/modules/audio/audio_module.h src/module_system.h
+
+# Audio module build rules
+src/modules/audio/%.o: src/modules/audio/%.c $(AUDIO_DEPS)
+	@echo "Compiling audio module: $<"
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# Audio module clean rule
+clean-audio:
+	rm -f $(AUDIO_OBJECTS)
+
+.PHONY: clean-audio

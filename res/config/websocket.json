@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "port": 8089,
+  "loglevel": 4096,
+  "secured": false
+}

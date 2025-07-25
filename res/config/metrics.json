@@ -1,0 +1,30 @@
+{
+  "enabled": true,
+  "collection_interval_ms": 5000,
+  "history_size": 60,
+  "collect": {
+    "process": true,
+    "streams": true,
+    "clients": true,
+    "system": true,
+    "network": false
+  },
+  "exporters": {
+    "prometheus": true,
+    "json_status": true,
+    "json_health": true,
+    "json_info": true,
+    "json_process_status": true
+  },
+  "endpoints": {
+    "metrics_path": "/metrics",
+    "process_metrics_path": "/process-metrics",
+    "status_path": "/status.json",
+    "process_status_path": "/process-status.json",
+    "health_path": "/health.json",
+    "info_path": "/info.json",
+    "config_path": "/config.json"
+  },
+  "enable_detailed_logging": false,
+  "max_clients_per_endpoint": 10
+}

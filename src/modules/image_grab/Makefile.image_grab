@@ -1,0 +1,34 @@
+# Image Grab Module Makefile
+# Copyright (C) 2025 Paul Philippov, Thingino Project
+
+# Module object files
+IMAGE_GRAB_OBJECTS = obj/modules/image_grab/image_grab_module.o \
+                     obj/modules/image_grab/image_grab_http.o
+
+# Add module objects to the main build
+OBJS += $(IMAGE_GRAB_OBJECTS)
+
+# Module compilation rules
+obj/modules/image_grab/image_grab_module.o: src/modules/image_grab/image_grab_module.c src/modules/image_grab/image_grab_module.h
+	@mkdir -p obj/modules/image_grab
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+obj/modules/image_grab/image_grab_http.o: src/modules/image_grab/image_grab_http.c src/modules/image_grab/image_grab_module.h
+	@mkdir -p obj/modules/image_grab
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+# Clean rule for module
+clean-image-grab:
+	rm -f $(IMAGE_GRAB_OBJECTS)
+
+.PHONY: clean-image-grab

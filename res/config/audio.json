@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "force_stereo": false,
+  "input_agc_compression_gain_db": 0,
+  "input_agc_enabled": false,
+  "input_agc_target_level_dbfs": 10,
+  "input_alc_gain": 0,
+  "input_bitrate": 40,
+  "input_enabled": true,
+  "input_format": "OPUS",
+  "input_gain": 25,
+  "input_high_pass_filter": false,
+  "input_noise_suppression": 0,
+  "input_sample_rate": 16000,
+  "input_vol": 80,
+  "output_enabled": false,
+  "output_sample_rate": 16000
+}

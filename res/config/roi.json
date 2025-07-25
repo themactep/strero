@@ -1,0 +1,18 @@
+{
+  "zones": [
+    {
+      "id": 1,
+      "type": "include",
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0,
+      "name": "Full Frame"
+    }
+  ],
+  "settings": {
+    "enabled": true,
+    "sensitivity": "30",
+    "minObjectSize": "5"
+  }
+}

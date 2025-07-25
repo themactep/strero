@@ -1,0 +1,24 @@
+{
+  "enabled": false,
+  "streams": [
+    {
+      "name": "local_test",
+      "enabled": false,
+      "url": "rtmp://192.168.1.61:1935/live",
+      "stream_key": "test",
+      "retry_interval": 30,
+      "max_retries": 3,
+      "connection_timeout": 30
+    }
+  ],
+  "video": {
+    "channel": 0,
+    "bitrate_limit": 3000,
+    "fps_limit": 30
+  },
+  "connection": {
+    "timeout": 30,
+    "chunk_size": 4096,
+    "keepalive_interval": 60
+  }
+}

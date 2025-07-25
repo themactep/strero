@@ -1,0 +1,19 @@
+{
+  "enabled": false,
+  "night_iso_threshold": 1900000.0,
+  "night_count_threshold": 5,
+  "day_iso_threshold": 479832.0,
+  "day_gb_gain_offset": 15.0,
+  "day_gb_gain_threshold": 145.0,
+  "day_iso_secondary_threshold": 361880.0,
+  "day_count_threshold": 3,
+  "polling_interval_ms": 1000,
+  "ircut_enabled": true,
+  "ircut_day_state": 1,
+  "ircut_night_state": 0,
+  "ircut_gpio1": 52,
+  "ircut_gpio2": 53,
+  "gb_gain_record_init": 200.0,
+  "gr_gain_record_init": 200.0,
+  "debug_logging": false
+}

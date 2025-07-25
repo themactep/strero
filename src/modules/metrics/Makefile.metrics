@@ -1,0 +1,43 @@
+# Metrics module build configuration
+# This file is included by the main Makefile when ENABLE_METRICS=1
+
+# Metrics module source files
+METRICS_SOURCES = src/modules/metrics/metrics_module.c
+
+# Metrics module object files
+METRICS_OBJECTS = obj/modules/metrics/metrics_module.o
+
+# Don't add sources to C_SOURCES_MODULES - we handle objects directly
+
+# Create metrics module object directory
+$(shell mkdir -p obj/modules/metrics)
+
+# Module compilation rules
+obj/modules/metrics/metrics_module.o: src/modules/metrics/metrics_module.c $(METRICS_DEPS)
+	@echo "Compiling metrics module: $<"
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+# Metrics module specific compiler flags
+METRICS_CFLAGS = -DENABLE_METRICS
+
+# Add metrics flags to main CFLAGS
+CFLAGS += $(METRICS_CFLAGS)
+
+# Metrics module dependencies
+METRICS_DEPS = src/modules/metrics/metrics_module.h src/module_system.h
+
+# Module compilation rules
+src/modules/metrics/%.o: src/modules/metrics/%.c $(METRICS_DEPS)
+	@echo "Compiling metrics module: $<"
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# Clean rule for module
+clean-metrics:
+	rm -f $(METRICS_OBJECTS)
+
+.PHONY: clean-metrics

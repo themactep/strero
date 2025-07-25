@@ -1,0 +1,35 @@
+# RTMP Client Module Makefile
+# This file is included by the main Makefile when ENABLE_RTMP_CLIENT=1
+# Copyright (C) 2025 Paul Philippov, Thingino Project
+
+# RTMP client module object files
+RTMP_CLIENT_OBJECTS = obj/modules/rtmp_client/rtmp_client.o \
+                      obj/modules/rtmp_client/rtmp_consumer.o
+
+# Add RTMP client module objects to the main build
+OBJS += $(RTMP_CLIENT_OBJECTS)
+
+# RTMP client module compilation rules
+obj/modules/rtmp_client/rtmp_client.o: src/modules/rtmp_client/rtmp_client.c src/modules/rtmp_client/rtmp_client.h
+	@mkdir -p obj/modules/rtmp_client
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+obj/modules/rtmp_client/rtmp_consumer.o: src/modules/rtmp_client/rtmp_consumer.c src/modules/rtmp_client/rtmp_consumer.h src/modules/rtmp_client/rtmp_client.h
+	@mkdir -p obj/modules/rtmp_client
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+# Clean rule for RTMP client module
+clean-rtmp-client:
+	rm -f $(RTMP_CLIENT_OBJECTS)
+
+.PHONY: clean-rtmp-client

@@ -1,0 +1,43 @@
+# Photosensing module build configuration
+# This file is included by the main Makefile when ENABLE_PHOTOSENSING=1
+
+# Photosensing module source files
+PHOTOSENSING_SOURCES = src/modules/photosensing/photosensing_module.c
+
+# Photosensing module object files
+PHOTOSENSING_OBJECTS = obj/modules/photosensing/photosensing_module.o
+
+# Don't add sources to C_SOURCES_MODULES - we handle objects directly
+
+# Create photosensing module object directory
+$(shell mkdir -p obj/modules/photosensing)
+
+# Photosensing module object build rule
+obj/modules/photosensing/photosensing_module.o: src/modules/photosensing/photosensing_module.c $(PHOTOSENSING_DEPS)
+	@echo "Compiling photosensing module: $<"
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+# Photosensing module specific compiler flags
+PHOTOSENSING_CFLAGS = -DENABLE_PHOTOSENSING
+
+# Add photosensing flags to main CFLAGS
+CFLAGS += $(PHOTOSENSING_CFLAGS)
+
+# Photosensing module dependencies
+PHOTOSENSING_DEPS = src/modules/photosensing/photosensing_module.h src/module_system.h
+
+# Photosensing module build rules
+src/modules/photosensing/%.o: src/modules/photosensing/%.c $(PHOTOSENSING_DEPS)
+	@echo "Compiling photosensing module: $<"
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# Photosensing module clean rule
+clean-photosensing:
+	rm -f $(PHOTOSENSING_OBJECTS)
+
+.PHONY: clean-photosensing

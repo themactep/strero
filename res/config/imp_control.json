@@ -1,0 +1,21 @@
+{
+  "ae_compensation": 128,
+  "anti_flicker": "disable",
+  "backlight_compensation": 0,
+  "brightness": 128,
+  "contrast": 128,
+  "day_night_mode": "auto",
+  "defog_strength": 0,
+  "drc_strength": 128,
+  "flip_horizontal": false,
+  "flip_vertical": false,
+  "highlight_suppression": 0,
+  "hue": 128,
+  "noise_reduction_2d": 128,
+  "noise_reduction_3d": 128,
+  "saturation": 128,
+  "sharpness": 128,
+  "white_balance_mode": "auto",
+  "white_balance_r_gain": 256,
+  "white_balance_b_gain": 256
+}

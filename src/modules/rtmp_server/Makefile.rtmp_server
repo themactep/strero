@@ -1,0 +1,25 @@
+# RTMP Server Module Makefile
+# This file is included by the main Makefile when ENABLE_RTMP_SERVER=1
+# Copyright (C) 2025 Paul Philippov, Thingino Project
+
+# RTMP server module object files
+RTMP_SERVER_OBJECTS = obj/modules/rtmp_server/rtmp_server.o
+
+# Add RTMP server module objects to the main build
+OBJS += $(RTMP_SERVER_OBJECTS)
+
+# RTMP server module compilation rules
+obj/modules/rtmp_server/rtmp_server.o: src/modules/rtmp_server/rtmp_server.c src/modules/rtmp_server/rtmp_server.h
+	@mkdir -p obj/modules/rtmp_server
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+# Clean rule for RTMP server module
+clean-rtmp-server:
+	rm -f $(RTMP_SERVER_OBJECTS)
+
+.PHONY: clean-rtmp

@@ -1,0 +1,52 @@
+{
+  "enabled": true,
+  "update_interval_ms": 1000,
+  "streams": [
+    {
+      "enabled": true,
+      "time": {
+        "enabled": true,
+        "format": "%F %T",
+        "font": "/usr/share/fonts/default.ttf",
+        "size": 48,
+        "color": "#FFFFFF44",
+        "background": "#00000000",
+        "position": "10,10"
+      },
+      "logo": {
+        "enabled": true,
+        "image": "/usr/share/images/logo_224x60.bgra",
+        "size": "224x60",
+        "position": "-10,-10",
+        "opacity": 0.8
+      },
+      "info": {
+        "enabled": false,
+        "position": "10,50"
+      }
+    },
+    {
+      "enabled": true,
+      "time": {
+        "enabled": true,
+        "format": "%H:%M:%S",
+        "font": "/usr/share/fonts/default.ttf",
+        "size": 24,
+        "color": "#FFFFFF",
+        "background": "#00000080",
+        "position": "5,5"
+      },
+      "logo": {
+        "enabled": true,
+        "image": "/usr/share/images/logo_100x30.bgra",
+        "size": "100x30",
+        "position": "-5,-5",
+        "opacity": 0.8
+      },
+      "info": {
+        "enabled": false,
+        "position": "5,25"
+      }
+    }
+  ]
+}

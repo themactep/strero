@@ -1,0 +1,10 @@
+{
+  "enabled": false,
+  "app_name": "live",
+  "auth_required": false,
+  "chunk_size": 4096,
+  "connection_timeout": 30,
+  "max_connections": 10,
+  "port": 1935,
+  "stream_key": ""
+}

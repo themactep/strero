@@ -1,0 +1,24 @@
+# Motion Detection module build configuration
+# Copyright (C) 2025 Paul Philippov, Thingino Project
+
+# Module object files
+MOTION_OBJECTS = obj/modules/motion/motion_module.o
+
+# Add module objects to the main build
+OBJS += $(MOTION_OBJECTS)
+
+# Module compilation rules
+obj/modules/motion/motion_module.o: src/modules/motion/motion_module.c src/modules/motion/motion_module.h
+	@mkdir -p obj/modules/motion
+	$(CC) $(CFLAGS) \
+		-I$(LIBIMP_INC_DIR) \
+		-I$(LIBIMP_INC_DIR)/imp \
+		-I$(LIBIMP_INC_DIR)/sysutils \
+		-isystem $(THIRDPARTY_INC_DIR) \
+		-c $< -o $@
+
+# Clean rule for module
+clean-motion:
+	rm -f $(MOTION_OBJECTS)
+
+.PHONY: clean-motion

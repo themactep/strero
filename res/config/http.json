@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "port": 8080,
+  "max_connections": 10,
+  "request_timeout_ms": 30000,
+  "endpoints": {
+    "snapshots": true,
+    "mjpeg_streams": true,
+    "json_api": true,
+    "metrics": true,
+    "onvif": true,
+    "api_overview": true
+  },
+  "auth": {
+    "enabled": true,
+    "localhost_bypass": true,
+    "username": "admin",
+    "password": "admin"
+  },
+  "security": {
+    "allowed_origins": "*"
+  },
+  "performance": {
+    "buffer_size": 4096,
+    "snapshot_buffer_size": 1048576,
+    "keep_alive": false,
+    "keep_alive_timeout": 30
+  }
+}

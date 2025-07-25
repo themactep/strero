@@ -1,0 +1,47 @@
+{
+  "general": {
+    "allocation_tracking_enabled": false,
+    "imp_polling_timeout": 10,
+    "loglevel": "DEBUG",
+    "memory_monitoring_enabled": true,
+    "osd_pool_size": 1025,
+    "zero_copy_buffer_pool_size": 20,
+    "zero_copy_enabled": true
+  },
+  "sensor": {
+    "fps": 30
+  },
+  "jpeg": {
+    "enabled": false,
+    "jpeg_channel": 0,
+    "jpeg_idle_fps": 1,
+    "jpeg_path": "/tmp/snapshot.jpg",
+    "jpeg_quality": 75,
+    "jpeg_refresh": 1000
+  },
+  "streams": [
+    {
+      "enabled": true,
+      "format": "H264",
+      "resolution": "1920x1080",
+      "bitrate": 6000,
+      "rtsp_endpoint": "ch0",
+      "rtsp_info": "stream0"
+    },
+    {
+      "enabled": true,
+      "format": "H264",
+      "resolution": "640x360",
+      "bitrate": 1000,
+      "rtsp_endpoint": "ch1",
+      "rtsp_info": "stream1"
+    }
+  ],
+  "snapshot_fallback": {
+    "enabled": true,
+    "output_dir": "/tmp",
+    "update_interval_ms": 5000,
+    "overwrite_existing": true,
+    "max_file_age_seconds": 3600
+  }
+}
