@@ -133,20 +133,10 @@ int module_init_all(void* global_config)
         if (module->config_parse && module->config_size > 0) {
             module_config = malloc(module->config_size);
             if (module_config) {
-                /* Try to load from dedicated config file first */
+                /* Load from dedicated config file only */
                 if (module_load_config_file(module->name, module_config, module->config_size, module->config_parse) != 0) {
-                    /* Fallback to global config section */
-                    if (global_config) {
-                        IMP_LOG_INFO(TAG, "Trying fallback config from main config for module '%s'", module->name);
-                        memset(module_config, 0, module->config_size);
-                        if (module->config_parse(global_config, module_config) != 0) {
-                            IMP_LOG_WARN(TAG, "Failed to parse fallback config for module '%s', using defaults", module->name);
-                            /* Keep the zeroed config as defaults */
-                        }
-                    } else {
-                        IMP_LOG_INFO(TAG, "No config available for module '%s', using defaults", module->name);
-                        /* Keep the zeroed config as defaults */
-                    }
+                    IMP_LOG_INFO(TAG, "No dedicated config file for module '%s', using defaults", module->name);
+                    /* Keep the zeroed config as defaults */
                 }
             }
         }
@@ -308,7 +298,7 @@ int module_load_config_file(const char* module_name, void* config_buffer, size_t
     }
 
     /* No config file found */
-    IMP_LOG_INFO(TAG, "No dedicated config file for module '%s', using defaults", module_name);
+    IMP_LOG_WARN(TAG, "No dedicated config file found for module '%s' in any location, using defaults", module_name);
     return -1;
 
 parse_config:
