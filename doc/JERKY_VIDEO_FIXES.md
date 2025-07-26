@@ -23,14 +23,24 @@ The video output was experiencing jerky playback with freezes and fast-forward m
 **Rationale**: Provides proper frame buffering to smooth out timing variations and prevent frame starvation.
 
 ### 2. Optimized Polling Timeouts
-**Files Modified**: `res/streamer.json`, `src/encoder.c`
+**Files Modified**: `src/frame_manager.c`, `src/modules/rtsp/rtsp_module.c`
 
-- Reduced `imp_polling_timeout` from 500ms to 33ms to match frame intervals
-- Updated encoder polling timeout from 30ms to 33ms to match 30fps frame interval (33.33ms)
+- Removed hardcoded `imp_polling_timeout` from configuration
+- Polling timeout now calculated automatically based on configured frame rate (1000/fps ms)
+- RTSP module polling timeout updated to use frame-rate appropriate timing
 
 **Rationale**: Aligns polling timeouts with actual frame delivery timing for smoother operation.
 
-### 3. Added Frame Timing Smoothing
+### 3. Removed Redundant Frame Rate Limiting
+**Files Modified**: `src/modules/rtsp/rtsp_module.c`
+
+- Removed hardcoded frame rate limiting logic that conflicted with encoder timing
+- Eliminated double frame rate control that caused irregular frame drops
+- Let encoder handle frame rate control natively for smoother timing
+
+**Rationale**: Prevents timing conflicts between encoder and RTSP module frame rate control.
+
+### 4. Added Frame Timing Smoothing
 **File Modified**: `src/encoder.c`
 
 - Implemented per-channel frame timing tracking with running averages
@@ -40,7 +50,7 @@ The video output was experiencing jerky playback with freezes and fast-forward m
 
 **Rationale**: Provides visibility into frame timing issues and helps identify problematic patterns.
 
-### 4. Implemented Frame Drop Detection
+### 5. Implemented Frame Drop Detection
 **File Modified**: `src/main.c`
 
 - Added sequence number tracking for both channels
@@ -50,7 +60,7 @@ The video output was experiencing jerky playback with freezes and fast-forward m
 
 **Rationale**: Identifies when frames are being dropped, which is a primary cause of jerky playback.
 
-### 5. Optimized RTSP Server Loop Timing
+### 6. Optimized RTSP Server Loop Timing
 **File Modified**: `src/minimal_rtsp_server.c`
 
 - Reduced sleep time from 1ms to 0.5ms in RTP thread loop

@@ -12,7 +12,7 @@ The thingino firmware includes `jct` for easy JSON configuration management:
 # Get a configuration value
 jct /etc/streamer.json get motion.enabled
 
-# Set a configuration value  
+# Set a configuration value
 jct /etc/streamer.json set motion.enabled true
 
 # Print entire configuration
@@ -46,7 +46,7 @@ The configuration is organized into the following main sections:
 - **sensor**: Camera sensor configuration
 - **image**: Image processing settings
 - **stream0**: Primary video stream settings
-- **stream1**: Secondary video stream settings  
+- **stream1**: Secondary video stream settings
 - **stream2**: JPEG snapshot settings
 - **websocket**: WebSocket server settings
 - **audio**: Audio input/output settings
@@ -70,8 +70,7 @@ The configuration is organized into the following main sections:
 {
   "general": {
     "loglevel": "INFO",
-    "osd_pool_size": 1025,
-    "imp_polling_timeout": 500
+    "osd_pool_size": 1025
   }
 }
 ```
@@ -79,8 +78,6 @@ The configuration is organized into the following main sections:
 **loglevel** (string): Logging level. Options: `EMERGENCY`, `ALERT`, `CRITICAL`, `ERROR`, `WARN`, `NOTICE`, `INFO`, `DEBUG`.
 
 **osd_pool_size** (integer): OSD pool size (0-1024). Controls memory allocation for on-screen display elements.
-
-**imp_polling_timeout** (integer): IMP polling timeout in milliseconds (1-5000). Controls hardware polling frequency.
 
 ### RTSP Settings
 
@@ -274,7 +271,7 @@ Both stream0 and stream1 follow the same configuration structure. Stream0 is typ
 
 **mode** (string): Rate control mode. Options:
 - `CBR`: Constant Bit Rate
-- `VBR`: Variable Bit Rate  
+- `VBR`: Variable Bit Rate
 - `FIXQP`: Fixed Quantization Parameter
 - `SMART`: Smart mode (T1x, T2x, T30 only)
 - `CAPPED_VBR`: Capped Variable Bit Rate (T31 only)
@@ -294,7 +291,7 @@ Both stream0 and stream1 follow the same configuration structure. Stream0 is typ
 
 **profile** (integer): H.264/H.265 profile. Options:
 - `0`: Baseline profile
-- `1`: Main profile  
+- `1`: Main profile
 - `2`: High profile
 
 **rotation** (integer): Video stream rotation. Options:

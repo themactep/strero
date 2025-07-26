@@ -83,11 +83,10 @@ static void rtsp_frame_callback(rtsp_server_t* server, void* user_data)
 
     /* Module RTSP frame callbacks will be called per-channel when frames are actually processed */
 
-    /* Frame rate limiting - track last frame time for each channel using monotonic time */
-    static unsigned long last_frame_time_us[FS_CHN_NUM] = {0};
-    static bool first_frame[FS_CHN_NUM] = {true, true, true, true};
-
-    unsigned long current_time_us = (unsigned long)get_monotonic_time_us();
+    /* Get configured frame rate for polling timeout calculation */
+    extern struct streamer_config* g_config;
+    uint32_t configured_fps = g_config ? g_config->sensor.fps : 30;
+    uint32_t frame_interval_ms = 1000 / configured_fps; /* Frame interval in milliseconds */
 
     /* Process frames for each enabled channel */
     for (int i = 0; i < FS_CHN_NUM; i++) {
@@ -125,23 +124,12 @@ static void rtsp_frame_callback(rtsp_server_t* server, void* user_data)
         //     IMP_LOG_DBG(TAG, "Processing channel %d", i);
         // }
 
-        /* Frame rate limiting - only send frames at configured FPS */
-        if (!first_frame[i]) {
-            /* Calculate time since last frame for this channel using monotonic time */
-            unsigned long time_diff_us = current_time_us - last_frame_time_us[i];
-            unsigned long time_diff_ms = time_diff_us / 1000;
+        /* Remove frame rate limiting - let encoder handle frame rate control
+         * The encoder is already configured with the correct frame rate and
+         * adding another layer of rate limiting causes timing conflicts */
 
-            /* For 30fps, minimum interval is 33ms (1000/30) */
-            unsigned long min_interval_ms = 1000 / 30; /* Assuming 30fps for now */
-
-            if (time_diff_ms < min_interval_ms) {
-                /* Too soon, skip this frame */
-                continue;
-            }
-        }
-
-        /* Poll for frames using native IMP buffering */
-        int ret = IMP_Encoder_PollingStream(i, 10); /* 10ms timeout */
+        /* Poll for frames using native IMP buffering with frame-rate appropriate timeout */
+        int ret = IMP_Encoder_PollingStream(i, frame_interval_ms);
         if (ret >= 0) {
             IMPEncoderStream stream;
             ret = IMP_Encoder_GetStream(i, &stream, 1);
@@ -168,9 +156,7 @@ static void rtsp_frame_callback(rtsp_server_t* server, void* user_data)
                 metrics_update_stream_frame(i, frame_size, false);
 #endif
 
-                /* Update last frame time for this channel */
-                last_frame_time_us[i] = current_time_us;
-                first_frame[i] = false;
+                /* Frame processed successfully */
 
                 IMP_Encoder_ReleaseStream(i, &stream);
             } else {

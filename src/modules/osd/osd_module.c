@@ -341,42 +341,42 @@ int osd_create_regions(osd_context_t* ctx)
         IMP_LOG_INFO(TAG, "Region %d registered successfully to Group %d", i, ctx->group_id);
     }
 
-    IMP_LOG_INFO(TAG, "Setting up cover region for Group %d", ctx->group_id);
+    // IMP_LOG_INFO(TAG, "Setting up cover region for Group %d", ctx->group_id);
     if (osd_setup_cover_region(ctx) != 0) {
         IMP_LOG_ERR(TAG, "Failed to setup cover region for Group %d", ctx->group_id);
         return -1;
     }
-    IMP_LOG_INFO(TAG, "Cover region setup completed for Group %d", ctx->group_id);
+    // IMP_LOG_INFO(TAG, "Cover region setup completed for Group %d", ctx->group_id);
 
-    IMP_LOG_INFO(TAG, "Setting up rect region for Group %d", ctx->group_id);
+    // IMP_LOG_INFO(TAG, "Setting up rect region for Group %d", ctx->group_id);
     if (osd_setup_rect_region(ctx) != 0) {
         IMP_LOG_ERR(TAG, "Failed to setup rect region for Group %d", ctx->group_id);
         return -1;
     }
-    IMP_LOG_INFO(TAG, "Rect region setup completed for Group %d", ctx->group_id);
+    // IMP_LOG_INFO(TAG, "Rect region setup completed for Group %d", ctx->group_id);
 
-    IMP_LOG_INFO(TAG, "Setting up info region for Group %d", ctx->group_id);
+    // IMP_LOG_INFO(TAG, "Setting up info region for Group %d", ctx->group_id);
     if (osd_setup_info_region(ctx) != 0) {
         IMP_LOG_WARN(TAG, "Failed to setup info region for Group %d, continuing without info display", ctx->group_id);
     } else {
         IMP_LOG_INFO(TAG, "Info region setup completed for Group %d", ctx->group_id);
     }
 
-    IMP_LOG_INFO(TAG, "Setting up logo region for Group %d", ctx->group_id);
+    // IMP_LOG_INFO(TAG, "Setting up logo region for Group %d", ctx->group_id);
     if (osd_setup_logo_region(ctx) != 0) {
         IMP_LOG_WARN(TAG, "Failed to setup logo region for Group %d, continuing without logo", ctx->group_id);
     } else {
         IMP_LOG_INFO(TAG, "Logo region setup completed for Group %d", ctx->group_id);
     }
 
-    IMP_LOG_INFO(TAG, "Creating timestamp region for Group %d", ctx->group_id);
+    // IMP_LOG_INFO(TAG, "Creating timestamp region for Group %d", ctx->group_id);
     if (osd_create_timestamp_region(ctx) != 0) {
         IMP_LOG_WARN(TAG, "Failed to create timestamp region for Group %d, continuing without timestamp", ctx->group_id);
     } else {
         IMP_LOG_INFO(TAG, "Timestamp region created successfully for Group %d", ctx->group_id);
     }
 
-    IMP_LOG_INFO(TAG, "All OSD regions created and configured for Group %d - SUCCESS", ctx->group_id);
+    // IMP_LOG_INFO(TAG, "All OSD regions created and configured for Group %d - SUCCESS", ctx->group_id);
     return 0;
 }
 
@@ -802,13 +802,13 @@ int osd_calculate_text_size(osd_context_t* ctx, const char* text, int* width, in
                      *height);
     }
 
-    IMP_LOG_INFO(TAG,
-                 "Text size calculated: '%s' -> %dx%d (font_size=%d, bitmap: %d bytes)",
-                 text,
-                 *width,
-                 *height,
-                 (int) ctx->sft->yScale,
-                 bitmap_size);
+    // IMP_LOG_INFO(TAG,
+    //              "Text size calculated: '%s' -> %dx%d (font_size=%d, bitmap: %d bytes)",
+    //              text,
+    //              *width,
+    //              *height,
+    //              (int) ctx->sft->yScale,
+    //              bitmap_size);
     return 0;
 }
 
@@ -865,21 +865,21 @@ int osd_draw_text(osd_context_t* ctx, uint8_t* image, const char* text, int imag
         baseline_y = image_height + (int)floor(lmetrics.descender);
     }
 
-    IMP_LOG_INFO(TAG,
-                 "Font metrics: ascender=%.1f, descender=%.1f, bitmap height=%d, baseline_y=%d",
-                 lmetrics.ascender,
-                 lmetrics.descender,
-                 image_height,
-                 baseline_y);
+    // IMP_LOG_INFO(TAG,
+    //              "Font metrics: ascender=%.1f, descender=%.1f, bitmap height=%d, baseline_y=%d",
+    //              lmetrics.ascender,
+    //              lmetrics.descender,
+    //              image_height,
+    //              baseline_y);
 
-    IMP_LOG_INFO(TAG,
-                 "Rendering text '%s' with consistent baseline at y=%d in %dx%d bitmap (pen_x=%d, actual_width=%d)",
-                 text,
-                 baseline_y,
-                 image_width,
-                 image_height,
-                 pen_x,
-                 actual_width);
+    // IMP_LOG_INFO(TAG,
+    //              "Rendering text '%s' with consistent baseline at y=%d in %dx%d bitmap (pen_x=%d, actual_width=%d)",
+    //              text,
+    //              baseline_y,
+    //              image_width,
+    //              image_height,
+    //              pen_x,
+    //              actual_width);
 
     for (const char* c = text; *c; c++) {
         if (*c < 0 || *c >= OSD_GLYPH_CACHE_SIZE) {
@@ -991,31 +991,31 @@ int osd_update_timestamp(osd_context_t* ctx, const char* text)
         return -1;
     }
 
-    IMP_LOG_INFO(TAG, "Updating timestamp for Group %d with text: '%s'", ctx->group_id, text);
-    IMP_LOG_INFO(TAG, "Timestamp handle: %d, group_id: %d", ctx->timestamp.handle, ctx->group_id);
+    // IMP_LOG_INFO(TAG, "Updating timestamp for Group %d with text: '%s'", ctx->group_id, text);
+    // IMP_LOG_INFO(TAG, "Timestamp handle: %d, group_id: %d", ctx->timestamp.handle, ctx->group_id);
 
     pthread_mutex_lock(&ctx->mutex);
 
     /* Calculate exact size for this specific text */
     int text_width, text_height;
-    IMP_LOG_INFO(TAG, "Calculating text size for Group %d", ctx->group_id);
+    // IMP_LOG_INFO(TAG, "Calculating text size for Group %d", ctx->group_id);
     if (osd_calculate_text_size(ctx, text, &text_width, &text_height) != 0) {
         IMP_LOG_ERR(TAG, "Failed to calculate text size for Group %d", ctx->group_id);
         pthread_mutex_unlock(&ctx->mutex);
         return -1;
     }
-    IMP_LOG_INFO(TAG, "Text size calculated for Group %d: %dx%d", ctx->group_id, text_width, text_height);
+    // IMP_LOG_INFO(TAG, "Text size calculated for Group %d: %dx%d", ctx->group_id, text_width, text_height);
 
     /* Allocate buffer for this specific text */
     int bitmap_size = text_width * text_height * 4;
-    IMP_LOG_INFO(TAG, "Allocating bitmap buffer for Group %d: %d bytes", ctx->group_id, bitmap_size);
+    // IMP_LOG_INFO(TAG, "Allocating bitmap buffer for Group %d: %d bytes", ctx->group_id, bitmap_size);
     uint8_t* bitmap_data = (uint8_t*)malloc(bitmap_size);
     if (!bitmap_data) {
         IMP_LOG_ERR(TAG, "Failed to allocate bitmap buffer for Group %d (%d bytes)", ctx->group_id, bitmap_size);
         pthread_mutex_unlock(&ctx->mutex);
         return -1;
     }
-    IMP_LOG_INFO(TAG, "Bitmap buffer allocated successfully for Group %d", ctx->group_id);
+    // IMP_LOG_INFO(TAG, "Bitmap buffer allocated successfully for Group %d", ctx->group_id);
 
     /* Fill background */
     IMP_LOG_INFO(TAG, "Filling background for Group %d (alpha=%d)", ctx->group_id, ctx->bgra_bg[3]);
@@ -1079,8 +1079,8 @@ int osd_update_timestamp(osd_context_t* ctx, const char* text)
     rgnAttr.fmt = PIX_FMT_BGRA;
     rgnAttr.data.picData.pData = ctx->timestamp.data;
 
-    IMP_LOG_INFO(TAG, "Setting region attributes for Group %d: rect=(%d,%d)-(%d,%d), handle=%d",
-                 ctx->group_id, rgnAttr.rect.p0.x, rgnAttr.rect.p0.y, rgnAttr.rect.p1.x, rgnAttr.rect.p1.y, ctx->timestamp.handle);
+    // IMP_LOG_INFO(TAG, "Setting region attributes for Group %d: rect=(%d,%d)-(%d,%d), handle=%d",
+    //              ctx->group_id, rgnAttr.rect.p0.x, rgnAttr.rect.p0.y, rgnAttr.rect.p1.x, rgnAttr.rect.p1.y, ctx->timestamp.handle);
 
     /* Update the region attributes */
     int ret = IMP_OSD_SetRgnAttr(ctx->timestamp.handle, &rgnAttr);
@@ -1149,10 +1149,11 @@ int osd_reload_font_if_changed(osd_context_t* ctx)
 int osd_setup_font_region(osd_context_t* ctx)
 {
     if (!ctx) {
+        IMP_LOG_ERR(TAG, "Invalid context in osd_setup_font_region");
         return -1;
     }
 
-    IMP_LOG_INFO(TAG, "Setting up font region for Group %d, handle=%d", ctx->group_id, ctx->region_handles[OSD_REGION_FONT]);
+    // IMP_LOG_INFO(TAG, "Setting up font region for Group %d, handle=%d", ctx->group_id, ctx->region_handles[OSD_REGION_FONT]);
 
     IMPOSDRgnAttr rAttrFont;
     memset(&rAttrFont, 0, sizeof(IMPOSDRgnAttr));
@@ -1515,10 +1516,10 @@ int osd_context_update(osd_context_t* ctx)
 
     /* Update timestamp if enabled */
     if (ctx->config->osd.time.enabled) {
-        IMP_LOG_DBG(TAG, "Updating timestamp for group %d (enabled)", ctx->group_id);
+        // IMP_LOG_DBG(TAG, "Updating timestamp for group %d (enabled)", ctx->group_id);
         osd_update_timestamp_current(ctx);
     } else {
-        IMP_LOG_DBG(TAG, "Timestamp disabled for group %d, skipping update", ctx->group_id);
+        // IMP_LOG_DBG(TAG, "Timestamp disabled for group %d, skipping update", ctx->group_id);
     }
 
     return 0;
@@ -1772,7 +1773,7 @@ int osd_init(int group_id, int stream_width, int stream_height)
 /* Set timestamp OSD - bridge function */
 int osd_set_timestamp(int group_id, const char* timestamp)
 {
-    IMP_LOG_DBG(TAG, "Setting Timestamp OSD for Group %d: %s", group_id, timestamp);
+    // IMP_LOG_DBG(TAG, "Setting Timestamp OSD for Group %d: %s", group_id, timestamp);
 
     if (group_id < 0 || group_id >= FS_CHN_NUM || !g_osd_contexts[group_id]) {
         IMP_LOG_ERR(TAG, "Invalid Group ID or uninitialized OSD context: %d", group_id);
@@ -1794,7 +1795,7 @@ int osd_set_timestamp(int group_id, const char* timestamp)
 /* Set logo OSD - bridge function */
 int osd_set_logo(int group_id, int x, int y, const uint8_t* logo_data, int width, int height)
 {
-    IMP_LOG_DBG(TAG, "Setting Logo OSD for Group %d at (%d,%d) size %dx%d", group_id, x, y, width, height);
+    // IMP_LOG_DBG(TAG, "Setting Logo OSD for Group %d at (%d,%d) size %dx%d", group_id, x, y, width, height);
 
     if (group_id < 0 || group_id >= FS_CHN_NUM || !g_osd_contexts[group_id]) {
         IMP_LOG_ERR(TAG, "Invalid Group ID or uninitialized OSD context: %d", group_id);
@@ -1823,7 +1824,7 @@ int osd_set_logo(int group_id, int x, int y, const uint8_t* logo_data, int width
 /* Set text OSD - bridge function */
 int osd_set_text(int group_id, int x, int y, const char* text)
 {
-    IMP_LOG_DBG(TAG, "Setting Text OSD for Group %d at (%d,%d): %s", group_id, x, y, text);
+    // IMP_LOG_DBG(TAG, "Setting Text OSD for Group %d at (%d,%d): %s", group_id, x, y, text);
 
     if (group_id < 0 || group_id >= FS_CHN_NUM || !g_osd_contexts[group_id]) {
         IMP_LOG_ERR(TAG, "Invalid Group ID or uninitialized OSD context: %d", group_id);
@@ -1897,7 +1898,7 @@ int osd_set_text(int group_id, int x, int y, const char* text)
         return -1;
     }
 
-    IMP_LOG_INFO(TAG, "Text OSD set successfully for Group %d", group_id);
+    // IMP_LOG_INFO(TAG, "Text OSD set successfully for Group %d", group_id);
     return 0;
 }
 
@@ -2006,7 +2007,7 @@ int osd_update_timestamp_current(osd_context_t* ctx)
         /* Use the same time for debugging to avoid race conditions */
         char debug_time[32];
         strftime(debug_time, sizeof(debug_time), "%H:%M:%S", tm_info);
-        IMP_LOG_INFO(TAG, "Setting Timestamp OSD for Group %d: %s (system_time=%s)", ctx->group_id, timestamp, debug_time);
+        // IMP_LOG_INFO(TAG, "Setting Timestamp OSD for Group %d: %s (system_time=%s)", ctx->group_id, timestamp, debug_time);
 
         /* Update cache with new timestamp */
         strncpy(last_timestamp, timestamp, sizeof(last_timestamp) - 1);
@@ -2014,7 +2015,7 @@ int osd_update_timestamp_current(osd_context_t* ctx)
         last_timestamp_time = now;
     } else {
         /* Timestamp hasn't changed, skip bitmap regeneration */
-        IMP_LOG_DBG(TAG, "Timestamp unchanged for group %d, skipping update", ctx->group_id);
+        // IMP_LOG_DBG(TAG, "Timestamp unchanged for group %d, skipping update", ctx->group_id);
         return 0;
     }
 
@@ -2250,7 +2251,7 @@ static void* osd_timer_thread(void* arg)
 
                 /* Update OSD if channel has clients or if we want to update regardless */
                 if (client_count > 0) {
-                    IMP_LOG_DBG(TAG, "Updating timestamp for channel %d (has %d clients)", channel, client_count);
+                    // IMP_LOG_DBG(TAG, "Updating timestamp for channel %d (has %d clients)", channel, client_count);
                     osd_update_timestamp_current(g_osd_contexts[channel]);
                 } else {
                     // IMP_LOG_DBG(TAG, "Skipping timestamp update for channel %d (no clients)", channel);

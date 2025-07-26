@@ -481,6 +481,16 @@ int main(int argc, char *argv[])
     }
     IMP_LOG_INFO(TAG, "Sensor FPS set to %d/1 (all channels use sensor FPS)", sensor_fps);
 
+    /* Verify sensor FPS was set correctly */
+    uint32_t actual_fps_num, actual_fps_den;
+    ret = IMP_ISP_Tuning_GetSensorFPS(&actual_fps_num, &actual_fps_den);
+    if (ret == 0) {
+        IMP_LOG_INFO(TAG, "Verified sensor FPS: %d/%d (%.2f fps)",
+                   actual_fps_num, actual_fps_den, (float)actual_fps_num / actual_fps_den);
+    } else {
+        IMP_LOG_WARN(TAG, "Failed to verify sensor FPS setting");
+    }
+
     /* FrameSource init */
 
     /* Apply JSON configuration to channels before initialization */
@@ -625,6 +635,13 @@ int main(int argc, char *argv[])
                 IMP_LOG_ERR(TAG, "IMP_Encoder_SetDefaultParam(%d) error!", chnNum);
                 return -1;
             }
+
+            /* Log encoder configuration for debugging */
+            IMP_LOG_INFO(TAG, "Encoder channel %d configured: %dx%d@%d/%dfps, GOP=%d, bitrate=%dkbps, mode=%s",
+                        chnNum, imp_chn_attr_tmp->picWidth, imp_chn_attr_tmp->picHeight,
+                        target_fps_num, target_fps_den, gop_length, uTargetBitRate,
+                        (S_RC_METHOD == IMP_ENC_RC_MODE_CBR) ? "CBR" :
+                        (S_RC_METHOD == IMP_ENC_RC_MODE_VBR) ? "VBR" : "FIXQP");
 #ifdef LOW_BITSTREAM
             IMPEncoderRcAttr* rcAttr = &channel_attr.rcAttr;
             uTargetBitRate /= 2;

@@ -254,14 +254,19 @@ static void* frame_processing_thread(void* arg)
 {
     IMP_LOG_INFO(TAG, "Frame processing thread started");
 
+    /* Frame rate monitoring */
+    static unsigned long last_fps_report_time = 0;
+    static int frame_count_since_last_report = 0;
+
     extern struct streamer_config* g_config;
     if (!g_config) {
         IMP_LOG_ERR(TAG, "Global configuration not available");
         return NULL;
     }
 
-    /* Get polling timeout from config */
-    int polling_timeout_ms = g_config->general.imp_polling_timeout;
+    /* Calculate polling timeout based on frame rate */
+    uint32_t configured_fps = g_config->sensor.fps > 0 ? g_config->sensor.fps : 30;
+    int polling_timeout_ms = 1000 / configured_fps; /* Frame interval in milliseconds */
 
     /* Debug: Log consumer counts */
     for (int channel = 0; channel < 4; channel++) {
@@ -280,8 +285,22 @@ static void* frame_processing_thread(void* arg)
             if (frame_manager_get_consumer_count(channel) > 0) {
                 if (process_frame_from_encoder(channel) == 0) {
                     frame_processed = true;
+                    frame_count_since_last_report++;
                 }
             }
+        }
+
+        /* Report frame rate every 5 seconds */
+        unsigned long current_time = get_monotonic_time_us();
+        if (last_fps_report_time == 0) {
+            last_fps_report_time = current_time;
+        } else if (current_time - last_fps_report_time >= 5000000) { /* 5 seconds */
+            double elapsed_seconds = (current_time - last_fps_report_time) / 1000000.0;
+            double actual_fps = frame_count_since_last_report / elapsed_seconds;
+            IMP_LOG_INFO(TAG, "Actual frame processing rate: %.2f fps (%d frames in %.2f seconds)",
+                        actual_fps, frame_count_since_last_report, elapsed_seconds);
+            last_fps_report_time = current_time;
+            frame_count_since_last_report = 0;
         }
 
         /* If no frames were processed, sleep briefly to avoid busy waiting */
@@ -297,7 +316,9 @@ static void* frame_processing_thread(void* arg)
 static int process_frame_from_encoder(int channel)
 {
     extern struct streamer_config* g_config;
-    int polling_timeout_ms = g_config->general.imp_polling_timeout;
+    /* Calculate polling timeout based on frame rate */
+    uint32_t configured_fps = g_config->sensor.fps > 0 ? g_config->sensor.fps : 30;
+    int polling_timeout_ms = 1000 / configured_fps; /* Frame interval in milliseconds */
 
     /* Poll for frame from encoder */
     int ret = IMP_Encoder_PollingStream(channel, polling_timeout_ms);

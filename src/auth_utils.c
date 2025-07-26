@@ -21,19 +21,19 @@ static const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqr
 /* Get client information from socket */
 int auth_get_client_info(int socket_fd, client_info_t* client_info)
 {
-    IMP_LOG_DBG(TAG, "Getting client info for socket %d", socket_fd);
+    // IMP_LOG_DBG(TAG, "Getting client info for socket %d", socket_fd);
     if (!client_info) {
         IMP_LOG_ERR(TAG, "Invalid client info pointer");
         return -1;
     }
 
     /* Initialize client info */
-    IMP_LOG_DBG(TAG, "Initializing client info");
+    // IMP_LOG_DBG(TAG, "Initializing client info");
     memset(client_info, 0, sizeof(client_info_t));
     client_info->socket_fd = socket_fd;
 
     /* Get client address */
-    IMP_LOG_DBG(TAG, "Getting client address");
+    // IMP_LOG_DBG(TAG, "Getting client address");
     socklen_t addr_len = sizeof(client_info->addr);
     if (getpeername(socket_fd, (struct sockaddr*)&client_info->addr, &addr_len) < 0) {
         IMP_LOG_ERR(TAG, "Failed to get client address");
@@ -41,7 +41,7 @@ int auth_get_client_info(int socket_fd, client_info_t* client_info)
     }
 
     /* Convert IP to string */
-    IMP_LOG_DBG(TAG, "Converting IP to string");
+    // IMP_LOG_DBG(TAG, "Converting IP to string");
     if (!inet_ntop(AF_INET, &client_info->addr.sin_addr,
                    client_info->ip_string, sizeof(client_info->ip_string))) {
         IMP_LOG_ERR(TAG, "Failed to convert IP to string");
@@ -49,13 +49,12 @@ int auth_get_client_info(int socket_fd, client_info_t* client_info)
     }
 
     /* Check if localhost */
-    IMP_LOG_DBG(TAG, "Checking if client is localhost: %s", client_info->ip_string);
+    // IMP_LOG_DBG(TAG, "Checking if client is localhost: %s", client_info->ip_string);
     client_info->is_localhost = auth_is_localhost(&client_info->addr);
 
-    IMP_LOG_DBG(TAG, "Client info: IP=%s, localhost=%s, raw_ip=0x%08x",
-               client_info->ip_string, client_info->is_localhost ? "yes" : "no",
-               ntohl(client_info->addr.sin_addr.s_addr));
-
+    // IMP_LOG_DBG(TAG, "Client info: IP=%s, localhost=%s, raw_ip=0x%08x",
+    //            client_info->ip_string, client_info->is_localhost ? "yes" : "no",
+    //            ntohl(client_info->addr.sin_addr.s_addr));
     return 0;
 }
 
@@ -75,9 +74,8 @@ bool auth_is_localhost(const struct sockaddr_in* addr)
      */
     bool is_localhost = (ip >> 24) == 127 || ip == 0;
 
-    IMP_LOG_DBG(TAG, "Localhost check: IP=0x%08x, first_octet=%d, is_localhost=%s",
-               ip, (ip >> 24), is_localhost ? "yes" : "no");
-
+    // IMP_LOG_DBG(TAG, "Localhost check: IP=0x%08x, first_octet=%d, is_localhost=%s",
+    //            ip, (ip >> 24), is_localhost ? "yes" : "no");
     return is_localhost;
 }
 
@@ -102,7 +100,7 @@ bool auth_is_required(const auth_config_t* config, const client_info_t* client_i
     }
 
     /* Authentication required for non-localhost or when bypass disabled */
-    IMP_LOG_DBG(TAG, "Authentication required for %s", client_info->ip_string);
+    // IMP_LOG_DBG(TAG, "Authentication required for %s", client_info->ip_string);
     return true;
 }
 
@@ -117,7 +115,7 @@ int auth_base64_encode(const unsigned char* input, int input_len, char* output)
     int output_len = 0;
     int i;
 
-    IMP_LOG_DBG(TAG, "Base64 encoding input of length %d", input_len);
+    // IMP_LOG_DBG(TAG, "Base64 encoding input of length %d", input_len);
     for (i = 0; i < input_len; i += 3) {
         uint32_t octet_a = i < input_len ? input[i] : 0;
         uint32_t octet_b = i + 1 < input_len ? input[i + 1] : 0;
@@ -132,7 +130,7 @@ int auth_base64_encode(const unsigned char* input, int input_len, char* output)
     }
 
     output[output_len] = '\0';
-    IMP_LOG_DBG(TAG, "Base64 encoded output: %s", output);
+    // IMP_LOG_DBG(TAG, "Base64 encoded output: %s", output);
     return output_len;
 }
 
@@ -153,7 +151,7 @@ int auth_base64_decode(const char* input, unsigned char* output)
     int output_len = 0;
     int i;
 
-    IMP_LOG_DBG(TAG, "Base64 decoding input: %s", input);
+    // IMP_LOG_DBG(TAG, "Base64 decoding input: %s", input);
     for (i = 0; i < input_len; i += 4) {
         uint32_t sextet_a = input[i] == '=' ? 0 : strchr(base64_chars, input[i]) - base64_chars;
         uint32_t sextet_b = input[i + 1] == '=' ? 0 : strchr(base64_chars, input[i + 1]) - base64_chars;
@@ -167,7 +165,7 @@ int auth_base64_decode(const char* input, unsigned char* output)
         if (input[i + 3] != '=') output[output_len++] = triple & 255;
     }
 
-    IMP_LOG_DBG(TAG, "Base64 decoded output of length %d", output_len);
+    // IMP_LOG_DBG(TAG, "Base64 decoded output of length %d", output_len);
     return output_len;
 }
 
@@ -195,7 +193,7 @@ int auth_parse_basic_header(const char* auth_header, char* username, char* passw
     }
 
     decoded[decoded_len] = '\0';
-    IMP_LOG_DBG(TAG, "Decoded Basic Authentication credentials: %s", decoded);
+    // IMP_LOG_DBG(TAG, "Decoded Basic Authentication credentials: %s", decoded);
 
     /* Find the colon separator */
     char* colon = strchr((char*)decoded, ':');
@@ -209,7 +207,7 @@ int auth_parse_basic_header(const char* auth_header, char* username, char* passw
     username[63] = '\0';
     strncpy(password, colon + 1, 63);
     password[63] = '\0';
-    IMP_LOG_DBG(TAG, "Parsed username: %s, password: %s", username, password);
+    // IMP_LOG_DBG(TAG, "Parsed username: %s, password: %s", username, password);
 
     return 0;
 }
@@ -233,15 +231,15 @@ auth_result_t auth_validate_basic(const char* auth_header, const auth_config_t* 
         return AUTH_RESULT_INVALID;
     }
 
-    IMP_LOG_DBG(TAG, "Validating credentials: provided='%s:%s', expected='%s:%s'",
-               username, password, config->username, config->password);
+    // IMP_LOG_DBG(TAG, "Validating credentials: provided='%s:%s', expected='%s:%s'",
+    //            username, password, config->username, config->password);
 
     if (strcmp(username, config->username) == 0 && strcmp(password, config->password) == 0) {
-        IMP_LOG_DBG(TAG, "Credentials match - authentication successful");
+        // IMP_LOG_DBG(TAG, "Credentials match - authentication successful");
         return AUTH_RESULT_SUCCESS;
     }
 
-    IMP_LOG_WARN(TAG, "Credentials do not match - authentication failed");
+    // IMP_LOG_WARN(TAG, "Credentials do not match - authentication failed");
     return AUTH_RESULT_INVALID;
 }
 
@@ -255,7 +253,7 @@ int auth_encode_basic_credentials(const char* username, const char* password, ch
 
     char credentials[128];
     snprintf(credentials, sizeof(credentials), "%s:%s", username, password);
-    IMP_LOG_DBG(TAG, "Encoding credentials: %s", credentials);
+    // IMP_LOG_DBG(TAG, "Encoding credentials: %s", credentials);
 
     return auth_base64_encode((unsigned char*)credentials, strlen(credentials), output);
 }
@@ -269,7 +267,7 @@ int auth_generate_www_authenticate_header(const char* realm, char* output)
     }
 
     snprintf(output, 256, "WWW-Authenticate: Basic realm=\"%s\"", realm);
-    IMP_LOG_DBG(TAG, "Generated WWW-Authenticate header: %s", output);
+    // IMP_LOG_DBG(TAG, "Generated WWW-Authenticate header: %s", output);
     return 0;
 }
 
@@ -281,7 +279,7 @@ static const char* extract_auth_header(const char* request)
         return NULL;
     }
 
-    IMP_LOG_DBG(TAG, "Extracting Authorization header from request");
+    // IMP_LOG_DBG(TAG, "Extracting Authorization header from request");
     const char* auth_line = strstr(request, "Authorization:");
     if (!auth_line) {
         /* Try lowercase */
@@ -319,7 +317,7 @@ static const char* extract_auth_header(const char* request)
 
     strncpy(auth_header, auth_line, len);
     auth_header[len] = '\0';
-    IMP_LOG_DBG(TAG, "Extracted Authorization header: %s", auth_header);
+    // IMP_LOG_DBG(TAG, "Extracted Authorization header: %s", auth_header);
 
     return auth_header;
 }
@@ -340,7 +338,7 @@ auth_result_t auth_check_http_request(const char* request, const auth_config_t* 
     }
 
     /* Extract and validate authorization header */
-    IMP_LOG_DBG(TAG, "Checking HTTP request authentication from %s", client_info->ip_string);
+    // IMP_LOG_DBG(TAG, "Checking HTTP request authentication from %s", client_info->ip_string);
     const char* auth_header = extract_auth_header(request);
     return auth_validate_basic(auth_header, config);
 }
@@ -350,7 +348,7 @@ auth_result_t auth_check_rtsp_request(const char* request, const auth_config_t* 
                                      const client_info_t* client_info)
 {
     /* RTSP uses the same Basic Authentication as HTTP */
-    IMP_LOG_DBG(TAG, "Checking RTSP request authentication from %s", client_info->ip_string);
+    // IMP_LOG_DBG(TAG, "Checking RTSP request authentication from %s", client_info->ip_string);
     return auth_check_http_request(request, config, client_info);
 }
 
@@ -360,6 +358,6 @@ auth_result_t auth_check_onvif_request(const char* request, const auth_config_t*
 {
     /* ONVIF can use HTTP Basic Authentication or WS-Security
      * For now, implement Basic Authentication like HTTP */
-    IMP_LOG_DBG(TAG, "Checking ONVIF request authentication from %s", client_info->ip_string);
+    // IMP_LOG_DBG(TAG, "Checking ONVIF request authentication from %s", client_info->ip_string);
     return auth_check_http_request(request, config, client_info);
 }

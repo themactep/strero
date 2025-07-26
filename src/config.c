@@ -295,7 +295,6 @@ static int config_parse_json(streamer_config_t* config)
     if (json_object_object_get_ex(config->json_config, "general", &general_obj)) {
         parse_string_field(general_obj, "loglevel", config->general.loglevel, sizeof(config->general.loglevel));
         parse_int_field(general_obj, "osd_pool_size", &config->general.osd_pool_size);
-        parse_int_field(general_obj, "imp_polling_timeout", &config->general.imp_polling_timeout);
         parse_bool_field(general_obj, "memory_monitoring_enabled", &config->general.memory_monitoring_enabled);
         parse_bool_field(general_obj, "allocation_tracking_enabled", &config->general.allocation_tracking_enabled);
         parse_bool_field(general_obj, "zero_copy_enabled", &config->general.zero_copy_enabled);

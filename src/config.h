@@ -90,7 +90,6 @@ typedef struct general_config {
     int http_port;                    /* HTTP port */
     char loglevel[16];                /* Logging level */
     int osd_pool_size;                /* OSD pool size (0-1024) */
-    int imp_polling_timeout;          /* IMP polling timeout in milliseconds */
     bool memory_monitoring_enabled;   /* Enable/disable memory monitoring */
     bool allocation_tracking_enabled; /* Enable/disable allocation tracking */
     bool zero_copy_enabled;           /* Enable/disable zero copy mode */

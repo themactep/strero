@@ -16,6 +16,7 @@
 #include <arpa/inet.h>
 
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 
@@ -488,7 +489,7 @@ int rtsp_server_get_client_count(rtsp_server_t* server, int channel)
         //            server->clients[i].video_channel);
         if (server->clients[i].active && server->clients[i].state == RTSP_CLIENT_STATE_PLAYING
             && server->clients[i].video_channel == channel) {
-                IMP_LOG_DBG(TAG, "Client %d is active and playing on channel %d", i, channel);
+                // IMP_LOG_DBG(TAG, "Client %d is active and playing on channel %d", i, channel);
             count++;
         }
     }
@@ -496,34 +497,35 @@ int rtsp_server_get_client_count(rtsp_server_t* server, int channel)
     return count;
 }
 
-/* Calculate monotonic RTP timestamp per channel with frame-based timing */
+/* Calculate monotonic RTP timestamp per channel with real-time timing */
 static uint32_t calculate_monotonic_rtp_timestamp(int channel)
 {
     /* Static variables for each channel */
-    static uint32_t frame_count[4] = {0, 0, 0, 0};
+    static uint64_t last_frame_time[4] = {0, 0, 0, 0};
     static uint32_t base_timestamp[4] = {0, 0, 0, 0};
     static bool initialized[4] = {false, false, false, false};
 
-    /* Get actual sensor FPS from configuration */
-    extern struct streamer_config* g_config;
-    uint32_t actual_fps = g_config ? g_config->sensor.fps : 25;
+    /* Get current time */
+    uint64_t current_time = get_monotonic_time_us();
 
     /* Initialize on first call for this channel */
     if (!initialized[channel]) {
         base_timestamp[channel] = (uint32_t)(rand() % 100000);
-        frame_count[channel] = 0;
+        last_frame_time[channel] = current_time;
         initialized[channel] = true;
-        IMP_LOG_INFO(TAG,
-                     "Frame-based RTP timestamp initialized for channel %d: base=%u, fps=%u",
-                     channel,
-                     base_timestamp[channel],
-                     actual_fps);
+        IMP_LOG_INFO(TAG, "Real-time RTP timestamp initialized for channel %d: base=%u",
+                     channel, base_timestamp[channel]);
+        return base_timestamp[channel];
     }
 
-    frame_count[channel]++;
-    uint32_t timestamp_increment = 90000 / actual_fps;
+    /* Calculate timestamp based on actual elapsed time */
+    uint64_t elapsed_us = current_time - last_frame_time[channel];
+    uint32_t timestamp_increment = (uint32_t)((elapsed_us * 90000) / 1000000); /* 90kHz clock */
 
-    return base_timestamp[channel] + (frame_count[channel] * timestamp_increment);
+    last_frame_time[channel] = current_time;
+    base_timestamp[channel] += timestamp_increment;
+
+    return base_timestamp[channel];
 }
 
 /* Send frame to a specific client (for cached GOP frames) */
@@ -615,6 +617,23 @@ int rtsp_server_send_frame(rtsp_server_t* server,
     if (!server || !server->running || !frame_data || frame_size == 0) {
         IMP_LOG_ERR(TAG, "Invalid parameters for sending frame");
         return 0;
+    }
+
+    /* Frame rate debugging - track frames sent to RTSP */
+    static unsigned long last_rtsp_report_time = 0;
+    static int rtsp_frame_count = 0;
+    rtsp_frame_count++;
+
+    unsigned long current_time = get_monotonic_time_us();
+    if (last_rtsp_report_time == 0) {
+        last_rtsp_report_time = current_time;
+    } else if (current_time - last_rtsp_report_time >= 5000000) { /* 5 seconds */
+        double elapsed_seconds = (current_time - last_rtsp_report_time) / 1000000.0;
+        double rtsp_fps = rtsp_frame_count / elapsed_seconds;
+        IMP_LOG_INFO(TAG, "RTSP frames sent rate: %.2f fps (%d frames in %.2f seconds)",
+                    rtsp_fps, rtsp_frame_count, elapsed_seconds);
+        last_rtsp_report_time = current_time;
+        rtsp_frame_count = 0;
     }
 
     /* Use monotonic frame-based timestamp for smooth playback */
@@ -1134,6 +1153,22 @@ int rtsp_server_send_frame(rtsp_server_t* server,
         }
     }
 
+    /* Debug: Track client frame delivery rate */
+    static unsigned long last_client_report_time = 0;
+    static int client_frames_sent = 0;
+    client_frames_sent += clients_sent;
+
+    if (last_client_report_time == 0) {
+        last_client_report_time = current_time;
+    } else if (current_time - last_client_report_time >= 5000000) { /* 5 seconds */
+        double elapsed_seconds = (current_time - last_client_report_time) / 1000000.0;
+        double client_fps = client_frames_sent / elapsed_seconds;
+        IMP_LOG_INFO(TAG, "Client frame delivery rate: %.2f fps (%d frames to clients in %.2f seconds)",
+                    client_fps, client_frames_sent, elapsed_seconds);
+        last_client_report_time = current_time;
+        client_frames_sent = 0;
+    }
+
     return clients_sent;
 }
 
@@ -1374,8 +1409,33 @@ static void* server_thread_func(void* arg)
             if (server->clients[i].active && server->clients[i].socket_fd >= 0
                 && FD_ISSET(server->clients[i].socket_fd, &read_fds)) {
                 IMP_LOG_INFO(TAG, "*** CLIENT %d SOCKET READY FOR READING ***", i);
+
+                /* Check if this client has recent RTP send failures indicating broken connection */
+                bool connection_broken = false;
+                /* We can detect this by checking socket state, but for now we'll rely on the recv() result */
+
+                /* For TCP transport clients, temporarily mark as not playing to prevent RTP interference */
+                bool was_playing = (server->clients[i].state == RTSP_CLIENT_STATE_PLAYING);
+                rtsp_client_state_t original_state = server->clients[i].state;
+                if (server->clients[i].transport_mode == RTSP_TRANSPORT_TCP && was_playing) {
+                    IMP_LOG_INFO(TAG, "Temporarily pausing RTP for TCP client %d to handle control message", i);
+                    server->clients[i].state = RTSP_CLIENT_STATE_READY;
+
+                    /* State change to READY immediately stops RTP sending */
+                    IMP_LOG_INFO(TAG, "RTP paused for TCP client %d", i);
+                }
+
                 /* Handle client request */
-                if (handle_client_connection(server, i) < 0) {
+                int result = handle_client_connection(server, i);
+
+                /* Restore playing state if client is still active and request was successful */
+                if (server->clients[i].active && result >= 0 && was_playing &&
+                    server->clients[i].state == RTSP_CLIENT_STATE_READY) {
+                    server->clients[i].state = original_state;
+                    IMP_LOG_INFO(TAG, "Resumed RTP for TCP client %d after handling control message", i);
+                }
+
+                if (result < 0) {
                     /* Client disconnected or error */
                     IMP_LOG_DBG(TAG, "Client %d disconnected", i);
                     /* Mark client as inactive first to stop other threads from using it */
@@ -1410,8 +1470,8 @@ static void* rtp_thread_func(void* arg)
     // IMP_LOG_DBG(TAG, "RTP thread: Starting frame processing loop");
 
     while (!server->should_stop) {
-        /* Use 25ms polling (40fps) - compromise between responsiveness and efficiency */
-        usleep(25000); /* 25ms - balanced for both channel frame rates */
+        /* Use 16ms polling (60fps) - optimized for 30fps streaming with headroom */
+        usleep(16000); /* 16ms - allows up to 60fps with good efficiency */
 
         /* Check if we have any active RTSP clients */
         int active_rtsp_clients = 0;
@@ -1465,6 +1525,35 @@ static int handle_client_connection(rtsp_server_t* server, int client_index)
         }
     }
 
+    /* Log first few bytes to detect non-RTSP data */
+    if (bytes_received > 0) {
+        IMP_LOG_INFO(TAG, "Raw data received - first 4 bytes: 0x%02x 0x%02x 0x%02x 0x%02x",
+                    (unsigned char)buffer[0],
+                    bytes_received > 1 ? (unsigned char)buffer[1] : 0,
+                    bytes_received > 2 ? (unsigned char)buffer[2] : 0,
+                    bytes_received > 3 ? (unsigned char)buffer[3] : 0);
+
+        /* Special handling for TCP transport: look for TEARDOWN in the data stream */
+        if (client->transport_mode == RTSP_TRANSPORT_TCP && bytes_received >= 8) {
+            /* Search for "TEARDOWN" pattern in the received data */
+            for (int j = 0; j <= bytes_received - 8; j++) {
+                if (strncmp(&buffer[j], "TEARDOWN", 8) == 0) {
+                    IMP_LOG_INFO(TAG, "*** TEARDOWN DETECTED in TCP stream at offset %d ***", j);
+                    /* If TEARDOWN is not at the beginning, we have interleaved data */
+                    if (j > 0) {
+                        IMP_LOG_WARN(TAG, "TEARDOWN found with %d bytes of preceding data (likely RTP)", j);
+                        /* Move TEARDOWN to beginning of buffer */
+                        memmove(buffer, &buffer[j], bytes_received - j);
+                        bytes_received = bytes_received - j;
+                        buffer[bytes_received] = '\0';
+                        IMP_LOG_INFO(TAG, "Extracted TEARDOWN from interleaved stream: %s", buffer);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     /* Check if this is an RTP packet (TCP interleaved mode) */
     if (bytes_received >= 1 && buffer[0] == '$') {
         if (bytes_received >= 4) {
@@ -1489,16 +1578,18 @@ static int handle_client_connection(rtsp_server_t* server, int client_index)
     buffer[bytes_received] = '\0';
     client->last_activity_us = get_monotonic_time_us();
 
-    IMP_LOG_INFO(TAG, "Received RTSP request (%d bytes):\n%s", bytes_received, buffer);
+    IMP_LOG_INFO(TAG, "Received RTSP request (%d bytes): %s", bytes_received,
+                 (bytes_received > 0 && buffer[0] != '\0') ? buffer : "[empty or invalid]");
 
     /* Parse RTSP request first to get CSeq for proper response handling */
     rtsp_method_t method;
     char url[MAX_RTSP_URL_LEN];
-    int cseq;
+    int cseq = 0; /* Initialize to 0 in case parsing fails */
 
     if (parse_rtsp_request(buffer, &method, url, &cseq) < 0) {
-        IMP_LOG_ERR(TAG, "Failed to parse RTSP request");
-        return send_rtsp_response(client, RTSP_STATUS_BAD_REQUEST, "Bad Request", NULL, NULL);
+        IMP_LOG_ERR(TAG, "Failed to parse RTSP request, closing connection");
+        /* For malformed requests (like responses being sent as requests), close the connection */
+        return -1;
     }
 
     client->cseq = cseq;
@@ -1506,15 +1597,30 @@ static int handle_client_connection(rtsp_server_t* server, int client_index)
     /* Get client information for authentication */
     client_info_t client_info;
     if (auth_get_client_info(client->socket_fd, &client_info) < 0) {
-        IMP_LOG_ERR(TAG, "Failed to get client information");
-        return -1;
+        /* If we can't get client info but this is a TEARDOWN, allow it to proceed */
+        if (method == RTSP_METHOD_TEARDOWN) {
+            IMP_LOG_WARN(TAG, "Failed to get client info for TEARDOWN (broken connection), proceeding with cleanup");
+            /* Set dummy client info for TEARDOWN processing */
+            memset(&client_info, 0, sizeof(client_info));
+            strcpy(client_info.ip_string, "unknown");
+        } else {
+            IMP_LOG_ERR(TAG, "Failed to get client information");
+            return -1;
+        }
     }
 
-    /* Check authentication */
-    IMP_LOG_DBG(TAG, "Auth config: enabled=%s, username='%s', password='%s'",
-               server->config.auth.enabled ? "true" : "false",
-               server->config.auth.username, server->config.auth.password);
-    auth_result_t auth_result = auth_check_rtsp_request(buffer, &server->config.auth, &client_info);
+    /* Check authentication (skip for TEARDOWN on broken connections) */
+    auth_result_t auth_result = AUTH_RESULT_SUCCESS;
+    bool skip_auth = (method == RTSP_METHOD_TEARDOWN && strcmp(client_info.ip_string, "unknown") == 0);
+
+    if (!skip_auth) {
+        IMP_LOG_DBG(TAG, "Auth config: enabled=%s, username='%s', password='%s'",
+                   server->config.auth.enabled ? "true" : "false",
+                   server->config.auth.username, server->config.auth.password);
+        auth_result = auth_check_rtsp_request(buffer, &server->config.auth, &client_info);
+    } else {
+        IMP_LOG_INFO(TAG, "Skipping authentication for TEARDOWN on broken connection");
+    }
 
     if (auth_result == AUTH_RESULT_REQUIRED) {
         /* Send 401 Unauthorized with WWW-Authenticate header */
@@ -1565,6 +1671,7 @@ static int handle_client_connection(rtsp_server_t* server, int client_index)
         if (transport_line) {
             sscanf(transport_line, "Transport: %255[^\r\n]", transport);
         }
+        IMP_LOG_INFO(TAG, "*** SETUP REQUEST - Transport: %s ***", transport);
         return handle_setup_request(server, client, url, transport);
     }
 
@@ -1575,6 +1682,7 @@ static int handle_client_connection(rtsp_server_t* server, int client_index)
         return handle_pause_request(server, client);
 
     case RTSP_METHOD_TEARDOWN:
+        IMP_LOG_INFO(TAG, "*** TEARDOWN REQUEST RECEIVED - Processing client termination request ***");
         return handle_teardown_request(server, client);
 
     default:
@@ -1598,6 +1706,12 @@ static int parse_rtsp_request(const char* request, rtsp_method_t* method, char* 
         return -1;
     }
 
+    /* Check if this is actually an RTSP response being sent as a request */
+    if (strncmp(method_str, "RTSP/", 5) == 0) {
+        IMP_LOG_WARN(TAG, "Client sent RTSP response instead of request: %s", method_str);
+        return -1;
+    }
+
     /* Determine method */
     if (strcmp(method_str, "OPTIONS") == 0) {
         *method = RTSP_METHOD_OPTIONS;
@@ -1611,6 +1725,7 @@ static int parse_rtsp_request(const char* request, rtsp_method_t* method, char* 
         *method = RTSP_METHOD_PAUSE;
     } else if (strcmp(method_str, "TEARDOWN") == 0) {
         *method = RTSP_METHOD_TEARDOWN;
+        IMP_LOG_INFO(TAG, "*** TEARDOWN METHOD DETECTED IN REQUEST PARSING ***");
     } else {
         IMP_LOG_ERR(TAG, "Unknown RTSP method: '%s' in request: %s", method_str, request);
         *method = RTSP_METHOD_UNKNOWN;
@@ -1642,6 +1757,9 @@ static int send_rtsp_response(rtsp_client_t* client,
 {
     char response[MAX_RTSP_BUFFER_SIZE];
     int len;
+
+    /* Log CSeq value before building response */
+    IMP_LOG_INFO(TAG, "Building RTSP response with CSeq: %d (status: %d %s)", client->cseq, status_code, status_text);
 
     /* Build response */
     len = snprintf(response,
@@ -1694,7 +1812,7 @@ static int handle_options_request(rtsp_server_t* server, rtsp_client_t* client)
 {
     const char* headers = "Public: OPTIONS, DESCRIBE, SETUP, PLAY, PAUSE, TEARDOWN\r\n";
 
-    // IMP_LOG_INFO(TAG, "Handling OPTIONS request");
+    IMP_LOG_INFO(TAG, "Handling OPTIONS request with CSeq: %d", client->cseq);
     return send_rtsp_response(client, RTSP_STATUS_OK, "OK", headers, NULL);
 }
 
@@ -1868,7 +1986,20 @@ setup_udp_transport:
             IMP_LOG_ERR(TAG, "Failed to create RTP UDP socket: %s", strerror(errno));
             return send_rtsp_response(client, RTSP_STATUS_INTERNAL_ERROR, "Internal Server Error", NULL, NULL);
         }
-        IMP_LOG_INFO(TAG, "Created RTP UDP socket (fd=%d) for client %s:%d",
+
+        /* Optimize UDP socket buffers for streaming */
+        int send_buffer_size = 256 * 1024; /* 256KB send buffer */
+        int recv_buffer_size = 64 * 1024;  /* 64KB receive buffer */
+
+        if (setsockopt(client->rtp_socket_fd, SOL_SOCKET, SO_SNDBUF, &send_buffer_size, sizeof(send_buffer_size)) < 0) {
+            IMP_LOG_WARN(TAG, "Failed to set RTP socket send buffer size: %s", strerror(errno));
+        }
+
+        if (setsockopt(client->rtp_socket_fd, SOL_SOCKET, SO_RCVBUF, &recv_buffer_size, sizeof(recv_buffer_size)) < 0) {
+            IMP_LOG_WARN(TAG, "Failed to set RTP socket receive buffer size: %s", strerror(errno));
+        }
+
+        IMP_LOG_INFO(TAG, "Created RTP UDP socket (fd=%d) for client %s:%d with optimized buffers",
                      client->rtp_socket_fd, inet_ntoa(client->rtp_addr.sin_addr), client->rtp_port);
 
         /* Build transport response - no server_port needed for UDP */
@@ -1971,7 +2102,7 @@ static int handle_pause_request(rtsp_server_t* server, rtsp_client_t* client)
 
 static int handle_teardown_request(rtsp_server_t* server, rtsp_client_t* client)
 {
-    // IMP_LOG_INFO(TAG, "Handling TEARDOWN request");
+    IMP_LOG_INFO(TAG, "Handling TEARDOWN request - client requesting session termination");
 
     /* Update client state */
     client->state = RTSP_CLIENT_STATE_INIT;
@@ -1979,10 +2110,19 @@ static int handle_teardown_request(rtsp_server_t* server, rtsp_client_t* client)
     /* Send response */
     int ret = send_rtsp_response(client, RTSP_STATUS_OK, "OK", NULL, NULL);
 
+    if (ret == 0) {
+        IMP_LOG_INFO(TAG, "TEARDOWN response sent successfully, cleaning up client");
+        /* Allow time for response to be transmitted before cleanup */
+        usleep(10000); /* 10ms delay */
+    } else {
+        IMP_LOG_WARN(TAG, "Failed to send TEARDOWN response, proceeding with cleanup");
+    }
+
     /* Clean up client resources */
     cleanup_client(client);
     server->client_count--;
 
+    IMP_LOG_INFO(TAG, "TEARDOWN completed, client cleaned up");
     return ret;
 }
 
@@ -2384,7 +2524,7 @@ static int send_h264_fragmented_rtp(
 
             /* Add small delay for TLS clients to prevent overwhelming the connection */
             if (client->use_tls) {
-                usleep(50); /* 0.05ms delay for TLS flow control */
+                usleep(25); /* Reduced to 0.025ms delay for TLS flow control */
             }
         }
 
@@ -2473,7 +2613,7 @@ static int send_h264_fragmented_rtp(
 
             /* Add small delay for TLS clients to prevent overwhelming the connection */
             if (client->use_tls) {
-                usleep(50); /* 0.05ms delay for TLS flow control */
+                usleep(25); /* Reduced to 0.025ms delay for TLS flow control */
             }
         }
 
@@ -2602,10 +2742,22 @@ static int send_rtp_packet(
                              sizeof(client->rtp_addr));
         if (sent < 0) {
             IMP_LOG_ERR(TAG, "Failed to send RTP packet: %s", strerror(errno));
+            /* Track send failures */
+            static int send_failures = 0;
+            send_failures++;
+            if (send_failures % 100 == 1) {
+                IMP_LOG_WARN(TAG, "RTP send failures: %d total", send_failures);
+            }
             return -1;
         } else if (sent != packet_size) {
             IMP_LOG_WARN(TAG, "Partial RTP packet sent: %zd/%d bytes to %s:%d",
                         sent, packet_size, inet_ntoa(client->rtp_addr.sin_addr), ntohs(client->rtp_addr.sin_port));
+            /* Track partial sends */
+            static int partial_sends = 0;
+            partial_sends++;
+            if (partial_sends % 50 == 1) {
+                IMP_LOG_WARN(TAG, "RTP partial sends: %d total", partial_sends);
+            }
         }
 
         // IMP_LOG_INFO(TAG, "Sent RTP packet: %zd bytes to %s:%d (socket=%d)",
@@ -2627,6 +2779,14 @@ static int send_rtp_packet(
         //             client->rtp_port, packet_size, seq_num, rtp_timestamp, marker_bit, client->socket_fd,
         //             client->use_tls ? "yes" : "no");
 
+        /* Validate that RTP packet doesn't start with RTSP-like data */
+        if (packet_size >= 4 &&
+            (memcmp(packet, "RTSP", 4) == 0 || memcmp(packet, "GET ", 4) == 0 ||
+             memcmp(packet, "POST", 4) == 0 || memcmp(packet, "OPTI", 4) == 0)) {
+            IMP_LOG_WARN(TAG, "RTP packet starts with HTTP/RTSP-like data, skipping to prevent client confusion");
+            return 0; /* Skip this packet */
+        }
+
         /* Combine header and packet for single send() to reduce TCP overhead */
         uint8_t tcp_packet[MAX_RTP_PACKET_SIZE + 4];
         memcpy(tcp_packet, header, 4);
@@ -2635,13 +2795,19 @@ static int send_rtp_packet(
         int total_size = packet_size + 4;
         ssize_t sent = rtsp_client_tls_write(client, (const char*)tcp_packet, total_size);
         if (sent < total_size) {
-            IMP_LOG_ERR(TAG, "Failed to send TCP RTP packet: %zd/%d bytes, error: %s", sent, total_size, strerror(errno));
+            /* Log the specific error and what might be causing 501 responses */
+            if (sent == -1) {
+                IMP_LOG_ERR(TAG, "TCP RTP send failed completely: %s (this might cause client 501 responses)", strerror(errno));
+            } else {
+                IMP_LOG_ERR(TAG, "TCP RTP partial send: %zd/%d bytes, error: %s (this might cause client 501 responses)",
+                           sent, total_size, strerror(errno));
+            }
             return -1;
         }
 
         /* Add small delay for TLS clients to prevent overwhelming the connection */
         if (client->use_tls) {
-            usleep(100); /* 0.1ms delay for TLS flow control */
+            usleep(50); /* Reduced to 0.05ms delay for TLS flow control */
         }
 
         // IMP_LOG_DBG(TAG, "TCP RTP sent successfully: header=4 bytes, packet=%d bytes", packet_size);
