@@ -63,7 +63,8 @@ bool auth_is_localhost(const struct sockaddr_in* addr)
      * 127.0.0.0/8 (127.0.0.1 - 127.255.255.255)
      * Also check for 0.0.0.0 (sometimes used for local connections)
      */
-    return (ip >> 24) == 127 || ip == 0;
+    bool is_localhost = (ip >> 24) == 127 || ip == 0;
+    return is_localhost;
 }
 
 /* Check if authentication is required for this client */
@@ -139,9 +140,9 @@ int auth_base64_decode(const char* input, unsigned char* output)
 
         uint32_t triple = (sextet_a << 18) + (sextet_b << 12) + (sextet_c << 6) + sextet_d;
 
-        if (i + 2 < input_len) output[output_len++] = (triple >> 16) & 255;
-        if (i + 3 < input_len) output[output_len++] = (triple >> 8) & 255;
-        if (i + 4 < input_len) output[output_len++] = triple & 255;
+        output[output_len++] = (triple >> 16) & 255;
+        if (input[i + 2] != '=') output[output_len++] = (triple >> 8) & 255;
+        if (input[i + 3] != '=') output[output_len++] = triple & 255;
     }
 
     return output_len;
@@ -249,7 +250,9 @@ static const char* extract_auth_header(const char* request)
 
     /* Skip "Authorization: " */
     auth_line += 14;
-    while (*auth_line == ' ') auth_line++;
+    while (*auth_line == ' ') {
+        auth_line++;
+    }
 
     /* Find end of line */
     const char* end = strstr(auth_line, "\r\n");
