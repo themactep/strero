@@ -735,7 +735,8 @@ int main(int argc, char *argv[])
     IMP_LOG_INFO(TAG, "Initializing OSD");
     for (i = 0; i < FS_CHN_NUM; i++) {
         if (chn[i].enable) {
-            IMP_LOG_INFO(TAG, "Initializing OSD for enabled channel %d", i);
+            IMP_LOG_INFO(TAG, "Initializing OSD for enabled channel %d (size: %dx%d)",
+                         i, chn[i].fs_chn_attr.picWidth, chn[i].fs_chn_attr.picHeight);
 
             /* Initialize OSD for this channel */
             ret = osd_init(i, chn[i].fs_chn_attr.picWidth, chn[i].fs_chn_attr.picHeight);
@@ -750,11 +751,15 @@ int main(int argc, char *argv[])
     }
 
     /* Initialize OSD group cells */
+    IMP_LOG_INFO(TAG, "Initializing OSD group cells");
     for (i = 0; i < FS_CHN_NUM; i++) {
         chn[i].osd_grp.deviceID = DEV_ID_OSD;
         chn[i].osd_grp.groupID = i;
         chn[i].osd_grp.outputID = 0;
+        IMP_LOG_INFO(TAG, "OSD group cell %d: deviceID=%d, groupID=%d, outputID=%d",
+                     i, chn[i].osd_grp.deviceID, chn[i].osd_grp.groupID, chn[i].osd_grp.outputID);
     }
+    IMP_LOG_INFO(TAG, "OSD group cells initialized");
 #endif
 
     /* Bind FrameSource -> OSD -> Encoder */
@@ -767,17 +772,25 @@ int main(int argc, char *argv[])
             extern osd_context_t* g_osd_contexts[MAX_STREAMS];
             bool osd_available = (i < MAX_STREAMS && g_osd_contexts[i] && g_osd_contexts[i]->initialized);
 
+            IMP_LOG_INFO(TAG, "Channel %d OSD check - i=%d, MAX_STREAMS=%d, g_osd_contexts[%d]=%p",
+                         i, i, MAX_STREAMS, i, g_osd_contexts[i]);
+            if (i < MAX_STREAMS && g_osd_contexts[i]) {
+                IMP_LOG_INFO(TAG, "Channel %d OSD context exists, initialized=%s",
+                             i, g_osd_contexts[i]->initialized ? "true" : "false");
+            }
+
             if (osd_available) {
                 /* Bind with OSD: FrameSource -> OSD -> Encoder */
+                IMP_LOG_INFO(TAG, "OSD available for channel %d, binding with OSD", i);
                 ret = IMP_System_Bind(&chn[i].framesource_chn, &chn[i].osd_grp);
                 if (ret < 0) {
-                    IMP_LOG_ERR(TAG, "Bind FrameSource channel%d and OSD failed", i);
+                    IMP_LOG_ERR(TAG, "Bind FrameSource channel%d and OSD failed: %d", i, ret);
                     return -1;
                 }
 
                 ret = IMP_System_Bind(&chn[i].osd_grp, &chn[i].imp_encoder);
                 if (ret < 0) {
-                    IMP_LOG_ERR(TAG, "Bind OSD and Encoder channel%d failed", i);
+                    IMP_LOG_ERR(TAG, "Bind OSD and Encoder channel%d failed: %d", i, ret);
                     return -1;
                 }
                 IMP_LOG_INFO(TAG, "Bound FrameSource -> OSD -> Encoder for channel %d", i);
@@ -786,7 +799,7 @@ int main(int argc, char *argv[])
                 IMP_LOG_INFO(TAG, "OSD not available for channel %d, binding directly", i);
                 ret = IMP_System_Bind(&chn[i].framesource_chn, &chn[i].imp_encoder);
                 if (ret < 0) {
-                    IMP_LOG_ERR(TAG, "Bind FrameSource and Encoder channel%d failed", i);
+                    IMP_LOG_ERR(TAG, "Bind FrameSource and Encoder channel%d failed: %d", i, ret);
                     return -1;
                 }
                 IMP_LOG_INFO(TAG, "Bound FrameSource -> Encoder for channel %d", i);

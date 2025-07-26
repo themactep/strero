@@ -1,8 +1,17 @@
-#include "http_router.h"
+/*
+ * http_router.c - HTTP Dynamic Routing Implementation
+ * Implements dynamic HTTP routing for modular architecture
+ * Supports registering routes with handlers and dispatching requests
+ * Also includes API documentation generation and introspection
+ * Copyright (C) 2025 Paul Philippov, Thingino Project
+ */
+
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include <imp/imp_log.h>
+
+#include "http_router.h"
+#include "../../common.h"
 
 #define TAG "HTTP_ROUTER"
 

@@ -623,6 +623,9 @@ int rtsp_module_config_parse(json_object* json, void* config)
     IMP_LOG_INFO(TAG, "RTSP config loaded - port: %d, enabled: %s, TLS: %s (port: %d)",
                 rtsp_config->port, rtsp_config->enabled ? "true" : "false",
                 rtsp_config->tls_enabled ? "enabled" : "disabled", rtsp_config->tls_port);
+    IMP_LOG_INFO(TAG, "RTSP auth config - enabled: %s, username: '%s', password: '%s'",
+                rtsp_config->auth.enabled ? "true" : "false",
+                rtsp_config->auth.username, rtsp_config->auth.password);
 
     return 0;
 }

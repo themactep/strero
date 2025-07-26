@@ -14,7 +14,6 @@
 #include <stdarg.h>
 
 #include <arpa/inet.h>
-#include <imp/imp_encoder.h>
 #include <json-c/json.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>

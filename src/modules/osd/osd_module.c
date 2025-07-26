@@ -97,14 +97,21 @@ static void parse_position(const char* position_str,
     }
 
     /* Ensure position is within bounds */
-    if (*x < 0)
+    if (*x < 0) {
         *x = 0;
-    if (*y < 0)
+    }
+
+    if (*y < 0) {
         *y = 0;
-    if (*x + text_width > stream_width)
+    }
+
+    if (*x + text_width > stream_width) {
         *x = stream_width - text_width;
-    if (*y + text_height > stream_height)
+    }
+
+    if (*y + text_height > stream_height) {
         *y = stream_height - text_height;
+    }
 }
 
 /* Validate and cache time format during initialization */
@@ -142,8 +149,8 @@ static int osd_validate_time_format(osd_context_t* ctx)
     ctx->validated_time_format[sizeof(ctx->validated_time_format) - 1] = '\0';
     ctx->time_format_valid = true;
 
-    // IMP_LOG_INFO(TAG, "Time format validated for group %d: '%s' -> '%s'",
-    //              ctx->group_id, format, test_buffer);
+    IMP_LOG_INFO(TAG, "Time format validated for group %d: '%s' -> '%s'",
+                 ctx->group_id, format, test_buffer);
     return 0;
 }
 
@@ -155,7 +162,11 @@ int osd_context_init(osd_context_t* ctx, int group_id, int stream_width, int str
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "Initializing OSD context for group %d (%dx%d)", group_id, stream_width, stream_height);
+    IMP_LOG_INFO(TAG, "Initializing OSD context for group %d (%dx%d)", group_id, stream_width, stream_height);
+    IMP_LOG_INFO(TAG, "OSD config - enabled=%s, time.enabled=%s, time.format='%s'",
+                 config->osd.enabled ? "true" : "false",
+                 config->osd.time.enabled ? "true" : "false",
+                 config->osd.time.format ? config->osd.time.format : "NULL");
 
     /* Initialize context */
     memset(ctx, 0, sizeof(osd_context_t));
@@ -166,29 +177,34 @@ int osd_context_init(osd_context_t* ctx, int group_id, int stream_width, int str
     ctx->initialized = false;
     ctx->started = false;
 
+    IMP_LOG_INFO(TAG, "Context initialized with group_id=%d, dimensions=%dx%d",
+                 ctx->group_id, ctx->stream_width, ctx->stream_height);
+
     /* Initialize all region handles to invalid */
     for (int i = 0; i < OSD_REGION_COUNT; i++) {
         ctx->region_handles[i] = INVHANDLE;
     }
+    IMP_LOG_INFO(TAG, "All %d region handles initialized to INVHANDLE (%d)", OSD_REGION_COUNT, INVHANDLE);
 
     /* Initialize mutex */
     if (pthread_mutex_init(&ctx->mutex, NULL) != 0) {
         IMP_LOG_ERR(TAG, "Failed to initialize mutex for group %d", group_id);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "Mutex initialized successfully for group %d", group_id);
 
     /* Store in global array */
     if (group_id >= 0 && group_id < MAX_STREAMS) {
         g_osd_contexts[group_id] = ctx;
-        //IMP_LOG_DBG(TAG, "Stored OSD context for group %d in global array", group_id);
+        IMP_LOG_INFO(TAG, "Stored OSD context for group %d in global array at index %d", group_id, group_id);
     } else {
-        IMP_LOG_ERR(TAG, "Invalid group_id %d for global array storage", group_id);
+        IMP_LOG_ERR(TAG, "Invalid group_id %d for global array storage (MAX_STREAMS=%d)", group_id, MAX_STREAMS);
         pthread_mutex_destroy(&ctx->mutex);
         return -1;
     }
 
     /* Create OSD group */
-    // IMP_LOG_DBG(TAG, "Creating OSD group %d", group_id);
+    IMP_LOG_INFO(TAG, "Creating OSD group %d", group_id);
     int ret = IMP_OSD_CreateGroup(group_id);
     if (ret < 0) {
         IMP_LOG_ERR(TAG, "IMP_OSD_CreateGroup(%d) failed: %d", group_id, ret);
@@ -196,9 +212,10 @@ int osd_context_init(osd_context_t* ctx, int group_id, int stream_width, int str
         pthread_mutex_destroy(&ctx->mutex);
         return -1;
     }
-    // IMP_LOG_DBG(TAG, "OSD group %d created successfully", group_id);
+    IMP_LOG_INFO(TAG, "OSD group %d created successfully", group_id);
 
     /* Initialize libschrift for text rendering */
+    IMP_LOG_INFO(TAG, "Initializing libschrift for group %d", group_id);
     ret = osd_libschrift_init(ctx);
     if (ret != 0) {
         IMP_LOG_ERR(TAG, "Failed to initialize libschrift for group %d", group_id);
@@ -207,8 +224,10 @@ int osd_context_init(osd_context_t* ctx, int group_id, int stream_width, int str
         pthread_mutex_destroy(&ctx->mutex);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "libschrift initialized successfully for group %d", group_id);
 
     /* Validate time format */
+    IMP_LOG_INFO(TAG, "Validating time format for group %d", group_id);
     if (osd_validate_time_format(ctx) != 0) {
         IMP_LOG_ERR(TAG, "Failed to validate time format for group %d", group_id);
         osd_libschrift_cleanup(ctx);
@@ -217,8 +236,10 @@ int osd_context_init(osd_context_t* ctx, int group_id, int stream_width, int str
         pthread_mutex_destroy(&ctx->mutex);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "Time format validated successfully for group %d", group_id);
 
     /* Create OSD regions */
+    IMP_LOG_INFO(TAG, "Creating OSD regions for group %d", group_id);
     ret = osd_create_regions(ctx);
     if (ret != 0) {
         IMP_LOG_ERR(TAG, "Failed to create OSD regions for group %d", group_id);
@@ -228,8 +249,10 @@ int osd_context_init(osd_context_t* ctx, int group_id, int stream_width, int str
         pthread_mutex_destroy(&ctx->mutex);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "OSD regions created successfully for group %d", group_id);
 
     /* Start OSD */
+    IMP_LOG_INFO(TAG, "Starting OSD for group %d", group_id);
     ret = IMP_OSD_Start(group_id);
     if (ret < 0) {
         IMP_LOG_ERR(TAG, "IMP_OSD_Start(%d) failed: %d", group_id, ret);
@@ -239,11 +262,12 @@ int osd_context_init(osd_context_t* ctx, int group_id, int stream_width, int str
         pthread_mutex_destroy(&ctx->mutex);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "OSD started successfully for group %d", group_id);
 
     ctx->started = true;
     ctx->initialized = true;
 
-    // IMP_LOG_INFO(TAG, "OSD initialized and started for Group %d (%dx%d)", group_id, stream_width, stream_height);
+    IMP_LOG_INFO(TAG, "OSD initialized and started for Group %d (%dx%d) - COMPLETE SUCCESS", group_id, stream_width, stream_height);
     return 0;
 }
 
@@ -251,80 +275,108 @@ int osd_context_init(osd_context_t* ctx, int group_id, int stream_width, int str
 int osd_create_regions(osd_context_t* ctx)
 {
     if (!ctx) {
-        IMP_LOG_ERR(TAG, "Invalid context");
+        IMP_LOG_ERR(TAG, "Invalid context in osd_create_regions");
         return -1;
     }
 
+    IMP_LOG_INFO(TAG, "Creating all OSD regions for Group %d", ctx->group_id);
     int ret;
 
-    // IMP_LOG_INFO(TAG, "Creating font region for Group %d", ctx->group_id);
+    IMP_LOG_INFO(TAG, "Creating font region for Group %d", ctx->group_id);
     ctx->region_handles[OSD_REGION_FONT] = IMP_OSD_CreateRgn(NULL);
-    //IMP_LOG_INFO(TAG, "Font region created with handle %d for Group %d",
-    //             ctx->region_handles[OSD_REGION_FONT], ctx->group_id);
+    IMP_LOG_INFO(TAG, "Font region created with handle %d for Group %d",
+                 ctx->region_handles[OSD_REGION_FONT], ctx->group_id);
     if (ctx->region_handles[OSD_REGION_FONT] == INVHANDLE) {
-        IMP_LOG_ERR(TAG, "Failed to create TimeStamp region for Group %d", ctx->group_id);
+        IMP_LOG_ERR(TAG, "Failed to create TimeStamp region for Group %d (INVHANDLE=%d)", ctx->group_id, INVHANDLE);
         return -1;
     }
 
+    IMP_LOG_INFO(TAG, "Creating logo region for Group %d", ctx->group_id);
     ctx->region_handles[OSD_REGION_LOGO] = IMP_OSD_CreateRgn(NULL);
+    IMP_LOG_INFO(TAG, "Logo region created with handle %d for Group %d",
+                 ctx->region_handles[OSD_REGION_LOGO], ctx->group_id);
     if (ctx->region_handles[OSD_REGION_LOGO] == INVHANDLE) {
-        IMP_LOG_ERR(TAG, "Failed to create Logo region");
+        IMP_LOG_ERR(TAG, "Failed to create Logo region for Group %d", ctx->group_id);
         return -1;
     }
 
+    IMP_LOG_INFO(TAG, "Creating cover region for Group %d", ctx->group_id);
     ctx->region_handles[OSD_REGION_COVER] = IMP_OSD_CreateRgn(NULL);
+    IMP_LOG_INFO(TAG, " Cover region created with handle %d for Group %d",
+                 ctx->region_handles[OSD_REGION_COVER], ctx->group_id);
     if (ctx->region_handles[OSD_REGION_COVER] == INVHANDLE) {
-        IMP_LOG_ERR(TAG, "Failed to create Cover region");
+        IMP_LOG_ERR(TAG, "Failed to create Cover region for Group %d", ctx->group_id);
         return -1;
     }
 
+    IMP_LOG_INFO(TAG, "Creating rect region for Group %d", ctx->group_id);
     ctx->region_handles[OSD_REGION_RECT] = IMP_OSD_CreateRgn(NULL);
+    IMP_LOG_INFO(TAG, "Rect region created with handle %d for Group %d",
+                 ctx->region_handles[OSD_REGION_RECT], ctx->group_id);
     if (ctx->region_handles[OSD_REGION_RECT] == INVHANDLE) {
-        IMP_LOG_ERR(TAG, "Failed to create Rect region");
+        IMP_LOG_ERR(TAG, "Failed to create Rect region for Group %d", ctx->group_id);
         return -1;
     }
 
+    IMP_LOG_INFO(TAG, "Creating info region for Group %d", ctx->group_id);
     ctx->region_handles[OSD_REGION_INFO] = IMP_OSD_CreateRgn(NULL);
+    IMP_LOG_INFO(TAG, "Info region created with handle %d for Group %d",
+                 ctx->region_handles[OSD_REGION_INFO], ctx->group_id);
     if (ctx->region_handles[OSD_REGION_INFO] == INVHANDLE) {
-        IMP_LOG_ERR(TAG, "Failed to create Info region");
+        IMP_LOG_ERR(TAG, "Failed to create Info region for Group %d", ctx->group_id);
         return -1;
     }
 
     /* Register all regions to group */
+    IMP_LOG_INFO(TAG, "Registering all %d regions to Group %d", OSD_REGION_COUNT, ctx->group_id);
     for (int i = 0; i < OSD_REGION_COUNT; i++) {
-        //IMP_LOG_INFO(TAG, "Registering region %d (handle=%d) to Group %d",
-        //             i, ctx->region_handles[i], ctx->group_id);
+        IMP_LOG_INFO(TAG, "Registering region %d (handle=%d) to Group %d",
+                     i, ctx->region_handles[i], ctx->group_id);
         ret = IMP_OSD_RegisterRgn(ctx->region_handles[i], ctx->group_id, NULL);
         if (ret < 0) {
             IMP_LOG_ERR(TAG, "IMP_OSD_RegisterRgn failed for region %d, handle=%d, group=%d, ret=%d",
                          i, ctx->region_handles[i], ctx->group_id, ret);
             return -1;
         }
+        IMP_LOG_INFO(TAG, "Region %d registered successfully to Group %d", i, ctx->group_id);
     }
 
+    IMP_LOG_INFO(TAG, "Setting up cover region for Group %d", ctx->group_id);
     if (osd_setup_cover_region(ctx) != 0) {
-        IMP_LOG_ERR(TAG, "Failed to setup cover region");
+        IMP_LOG_ERR(TAG, "Failed to setup cover region for Group %d", ctx->group_id);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "Cover region setup completed for Group %d", ctx->group_id);
 
+    IMP_LOG_INFO(TAG, "Setting up rect region for Group %d", ctx->group_id);
     if (osd_setup_rect_region(ctx) != 0) {
-        IMP_LOG_ERR(TAG, "Failed to setup rect region");
+        IMP_LOG_ERR(TAG, "Failed to setup rect region for Group %d", ctx->group_id);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "Rect region setup completed for Group %d", ctx->group_id);
 
+    IMP_LOG_INFO(TAG, "Setting up info region for Group %d", ctx->group_id);
     if (osd_setup_info_region(ctx) != 0) {
-        IMP_LOG_WARN(TAG, "Failed to setup info region, continuing without info display");
+        IMP_LOG_WARN(TAG, "Failed to setup info region for Group %d, continuing without info display", ctx->group_id);
+    } else {
+        IMP_LOG_INFO(TAG, "Info region setup completed for Group %d", ctx->group_id);
     }
 
+    IMP_LOG_INFO(TAG, "Setting up logo region for Group %d", ctx->group_id);
     if (osd_setup_logo_region(ctx) != 0) {
-        IMP_LOG_WARN(TAG, "Failed to setup logo region, continuing without logo");
+        IMP_LOG_WARN(TAG, "Failed to setup logo region for Group %d, continuing without logo", ctx->group_id);
+    } else {
+        IMP_LOG_INFO(TAG, "Logo region setup completed for Group %d", ctx->group_id);
     }
 
+    IMP_LOG_INFO(TAG, "Creating timestamp region for Group %d", ctx->group_id);
     if (osd_create_timestamp_region(ctx) != 0) {
-        IMP_LOG_WARN(TAG, "Failed to create timestamp region, continuing without timestamp");
+        IMP_LOG_WARN(TAG, "Failed to create timestamp region for Group %d, continuing without timestamp", ctx->group_id);
+    } else {
+        IMP_LOG_INFO(TAG, "Timestamp region created successfully for Group %d", ctx->group_id);
     }
 
-    IMP_LOG_INFO(TAG, "All OSD regions created and configured for Group %d", ctx->group_id);
+    IMP_LOG_INFO(TAG, "All OSD regions created and configured for Group %d - SUCCESS", ctx->group_id);
     return 0;
 }
 
@@ -336,21 +388,22 @@ int osd_create_timestamp_region(osd_context_t* ctx)
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "Creating timestamp region for Group %d", ctx->group_id);
+    IMP_LOG_INFO(TAG, "Creating timestamp region for Group %d", ctx->group_id);
 
     /* Create region */
     ctx->timestamp.handle = IMP_OSD_CreateRgn(NULL);
-    // IMP_LOG_INFO(TAG, "IMP_OSD_CreateRgn returned handle: %d for Group %d", ctx->timestamp.handle, ctx->group_id);
+    IMP_LOG_INFO(TAG, "IMP_OSD_CreateRgn returned handle: %d for Group %d timestamp", ctx->timestamp.handle, ctx->group_id);
 
     if (ctx->timestamp.handle == INVHANDLE) {
         IMP_LOG_ERR(TAG, "Failed to create timestamp region for group %d (INVHANDLE=%d)", ctx->group_id, INVHANDLE);
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "Timestamp region created with handle %d for Group %d",
-    //                 ctx->timestamp.handle, ctx->group_id);
+    IMP_LOG_INFO(TAG, "Timestamp region created with handle %d for Group %d",
+                    ctx->timestamp.handle, ctx->group_id);
 
     /* Register region with group */
+    IMP_LOG_INFO(TAG, "Registering timestamp region %d with group %d", ctx->timestamp.handle, ctx->group_id);
     int ret = IMP_OSD_RegisterRgn(ctx->timestamp.handle, ctx->group_id, NULL);
     if (ret != 0) {
         IMP_LOG_ERR(TAG, "Failed to register timestamp region %d with group %d: %d",
@@ -360,8 +413,8 @@ int osd_create_timestamp_region(osd_context_t* ctx)
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "Timestamp region %d registered with Group %d successfully",
-    //              ctx->timestamp.handle, ctx->group_id);
+    IMP_LOG_INFO(TAG, "Timestamp region %d registered with Group %d successfully",
+                 ctx->timestamp.handle, ctx->group_id);
 
     return 0;
 }
@@ -522,11 +575,15 @@ int osd_libschrift_init(osd_context_t* ctx)
     }
 
     ctx->sft->font = sft_loadmem(ctx->font_data, ctx->font_data_size);
-    ctx->sft->xScale = (double) ctx->config->osd.time.size; /* Use configured font size */
+
+    /* Simple, fast font rendering */
+    ctx->sft->xScale = (double) ctx->config->osd.time.size;
     ctx->sft->yScale = (double) ctx->config->osd.time.size;
-    ctx->sft->xOffset = 0.0; /* CRITICAL: Initialize xOffset to prevent garbage values */
+    ctx->sft->xOffset = 0.0;
     ctx->sft->yOffset = 0.0;
     ctx->sft->flags = SFT_DOWNWARD_Y;
+
+    IMP_LOG_INFO(TAG, "libschrift initialized with simple, fast rendering");
 
     if (!ctx->sft->font) {
         IMP_LOG_ERR(TAG, "Failed to load font from memory");
@@ -542,7 +599,7 @@ int osd_libschrift_init(osd_context_t* ctx)
     const char* color_str = ctx->config->osd.time.color;
     if (color_str && color_str[0] == '#' && strlen(color_str) == 9) {
         font_color = (uint32_t) strtoul(color_str + 1, NULL, 16);
-        // IMP_LOG_DBG(TAG, "Parsed font color '%s' -> 0x%08X", color_str, font_color);
+        IMP_LOG_DBG(TAG, "Parsed font color '%s' -> 0x%08X", color_str, font_color);
     } else {
         IMP_LOG_ERR(TAG, "Using default font color (invalid format: '%s')", color_str ? color_str : "NULL");
     }
@@ -558,7 +615,7 @@ int osd_libschrift_init(osd_context_t* ctx)
     const char* bg_str = ctx->config->osd.time.background;
     if (bg_str && bg_str[0] == '#' && strlen(bg_str) == 9) {
         bg_color = (uint32_t) strtoul(bg_str + 1, NULL, 16);
-        // IMP_LOG_DBG(TAG, "Parsed background color '%s' -> 0x%08X", bg_str, bg_color);
+        IMP_LOG_DBG(TAG, "Parsed background color '%s' -> 0x%08X", bg_str, bg_color);
     } else {
         IMP_LOG_ERR(TAG, "Using default background color (invalid format: '%s')", bg_str ? bg_str : "NULL");
     }
@@ -662,6 +719,7 @@ int osd_render_glyph(osd_context_t* ctx, char c)
         return -1;
     }
 
+    /* Convert grayscale to BGRA - simple and fast */
     for (int y = 0; y < cached_glyph->height; y++) {
         for (int x = 0; x < cached_glyph->width; x++) {
             int pixel_index = y * cached_glyph->width + x;
@@ -744,13 +802,13 @@ int osd_calculate_text_size(osd_context_t* ctx, const char* text, int* width, in
                      *height);
     }
 
-    // IMP_LOG_INFO(TAG,
-    //              "Text size calculated: '%s' -> %dx%d (font_size=%d, bitmap: %d bytes)",
-    //              text,
-    //              *width,
-    //              *height,
-    //              (int) ctx->sft->yScale,
-    //              bitmap_size);
+    IMP_LOG_INFO(TAG,
+                 "Text size calculated: '%s' -> %dx%d (font_size=%d, bitmap: %d bytes)",
+                 text,
+                 *width,
+                 *height,
+                 (int) ctx->sft->yScale,
+                 bitmap_size);
     return 0;
 }
 
@@ -807,21 +865,21 @@ int osd_draw_text(osd_context_t* ctx, uint8_t* image, const char* text, int imag
         baseline_y = image_height + (int)floor(lmetrics.descender);
     }
 
-    // IMP_LOG_INFO(TAG,
-    //              "Font metrics: ascender=%.1f, descender=%.1f, bitmap height=%d, baseline_y=%d",
-    //              lmetrics.ascender,
-    //              lmetrics.descender,
-    //              image_height,
-    //              baseline_y);
+    IMP_LOG_INFO(TAG,
+                 "Font metrics: ascender=%.1f, descender=%.1f, bitmap height=%d, baseline_y=%d",
+                 lmetrics.ascender,
+                 lmetrics.descender,
+                 image_height,
+                 baseline_y);
 
-    // IMP_LOG_INFO(TAG,
-    //              "Rendering text '%s' with consistent baseline at y=%d in %dx%d bitmap (pen_x=%d, actual_width=%d)",
-    //              text,
-    //              baseline_y,
-    //              image_width,
-    //              image_height,
-    //              pen_x,
-    //              actual_width);
+    IMP_LOG_INFO(TAG,
+                 "Rendering text '%s' with consistent baseline at y=%d in %dx%d bitmap (pen_x=%d, actual_width=%d)",
+                 text,
+                 baseline_y,
+                 image_width,
+                 image_height,
+                 pen_x,
+                 actual_width);
 
     for (const char* c = text; *c; c++) {
         if (*c < 0 || *c >= OSD_GLYPH_CACHE_SIZE) {
@@ -835,7 +893,7 @@ int osd_draw_text(osd_context_t* ctx, uint8_t* image, const char* text, int imag
 
         osd_glyph_t* glyph = &ctx->glyph_cache[*c];
 
-        /* Position glyph relative to consistent baseline */
+        /* Position glyph relative to consistent baseline with pixel-perfect alignment */
         /* All characters use the same baseline_y, individual glyph ymin determines offset from baseline */
         int x = pen_x + glyph->xmin;
         int y = baseline_y + glyph->ymin; /* ymin is offset from baseline (negative for chars above baseline) */
@@ -909,7 +967,7 @@ int osd_context_start(osd_context_t* ctx)
     }
 
     if (ctx->started) {
-        // IMP_LOG_DBG(TAG, "OSD already started for group %d", ctx->group_id);
+        IMP_LOG_DBG(TAG, "OSD already started for group %d", ctx->group_id);
         return 0;
     }
 
@@ -921,7 +979,7 @@ int osd_context_start(osd_context_t* ctx)
     }
 
     ctx->started = true;
-    // IMP_LOG_INFO(TAG, "OSD started for group %d", ctx->group_id);
+    IMP_LOG_INFO(TAG, "OSD started for group %d", ctx->group_id);
     return 0;
 }
 
@@ -929,28 +987,38 @@ int osd_context_start(osd_context_t* ctx)
 int osd_update_timestamp(osd_context_t* ctx, const char* text)
 {
     if (!ctx || !text) {
+        IMP_LOG_ERR(TAG, "Invalid parameters in osd_update_timestamp: ctx=%p, text=%p", ctx, text);
         return -1;
     }
+
+    IMP_LOG_INFO(TAG, "Updating timestamp for Group %d with text: '%s'", ctx->group_id, text);
+    IMP_LOG_INFO(TAG, "Timestamp handle: %d, group_id: %d", ctx->timestamp.handle, ctx->group_id);
 
     pthread_mutex_lock(&ctx->mutex);
 
     /* Calculate exact size for this specific text */
     int text_width, text_height;
+    IMP_LOG_INFO(TAG, "Calculating text size for Group %d", ctx->group_id);
     if (osd_calculate_text_size(ctx, text, &text_width, &text_height) != 0) {
-        IMP_LOG_ERR(TAG, "Failed to calculate text size");
+        IMP_LOG_ERR(TAG, "Failed to calculate text size for Group %d", ctx->group_id);
         pthread_mutex_unlock(&ctx->mutex);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "Text size calculated for Group %d: %dx%d", ctx->group_id, text_width, text_height);
 
     /* Allocate buffer for this specific text */
-    uint8_t* bitmap_data = (uint8_t*)malloc(text_width * text_height * 4);
+    int bitmap_size = text_width * text_height * 4;
+    IMP_LOG_INFO(TAG, "Allocating bitmap buffer for Group %d: %d bytes", ctx->group_id, bitmap_size);
+    uint8_t* bitmap_data = (uint8_t*)malloc(bitmap_size);
     if (!bitmap_data) {
-        IMP_LOG_ERR(TAG, "Failed to allocate bitmap buffer");
+        IMP_LOG_ERR(TAG, "Failed to allocate bitmap buffer for Group %d (%d bytes)", ctx->group_id, bitmap_size);
         pthread_mutex_unlock(&ctx->mutex);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "Bitmap buffer allocated successfully for Group %d", ctx->group_id);
 
     /* Fill background */
+    IMP_LOG_INFO(TAG, "Filling background for Group %d (alpha=%d)", ctx->group_id, ctx->bgra_bg[3]);
     if (ctx->bgra_bg[3] > 0) {
         for (int i = 0; i < text_width * text_height; i++) {
             int pixel_offset = i * 4;
@@ -962,17 +1030,21 @@ int osd_update_timestamp(osd_context_t* ctx, const char* text)
     } else {
         memset(bitmap_data, 0, text_width * text_height * 4);
     }
+    IMP_LOG_INFO(TAG, "Background filled for Group %d", ctx->group_id);
 
     /* Draw text into buffer */
+    IMP_LOG_INFO(TAG, "Drawing text into buffer for Group %d", ctx->group_id);
     if (osd_draw_text(ctx, bitmap_data, text, text_width, text_height) != 0) {
-        IMP_LOG_ERR(TAG, "Failed to draw text");
+        IMP_LOG_ERR(TAG, "Failed to draw text for Group %d", ctx->group_id);
         free(bitmap_data);
         pthread_mutex_unlock(&ctx->mutex);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "Text drawn successfully for Group %d", ctx->group_id);
 
     /* Free previous bitmap if exists */
     if (ctx->timestamp.data) {
+        IMP_LOG_INFO(TAG, "Freeing previous bitmap data for Group %d", ctx->group_id);
         free(ctx->timestamp.data);
     }
 
@@ -980,9 +1052,11 @@ int osd_update_timestamp(osd_context_t* ctx, const char* text)
     ctx->timestamp.data = bitmap_data;
     ctx->timestamp.width = text_width;
     ctx->timestamp.height = text_height;
+    IMP_LOG_INFO(TAG, "Timestamp data updated for Group %d: %dx%d", ctx->group_id, text_width, text_height);
 
     /* Parse position from configuration */
     int pos_x, pos_y;
+    IMP_LOG_INFO(TAG, "Parsing position for Group %d from config: '%s'", ctx->group_id, ctx->config->osd.time.position);
     parse_position(ctx->config->osd.time.position,
                    ctx->stream_width,
                    ctx->stream_height,
@@ -990,6 +1064,7 @@ int osd_update_timestamp(osd_context_t* ctx, const char* text)
                    text_height,
                    &pos_x,
                    &pos_y);
+    IMP_LOG_INFO(TAG, "Position calculated for Group %d: (%d,%d)", ctx->group_id, pos_x, pos_y);
 
     /* Update region attributes */
     IMPOSDRgnAttr rgnAttr;
@@ -1004,24 +1079,31 @@ int osd_update_timestamp(osd_context_t* ctx, const char* text)
     rgnAttr.fmt = PIX_FMT_BGRA;
     rgnAttr.data.picData.pData = ctx->timestamp.data;
 
+    IMP_LOG_INFO(TAG, "Setting region attributes for Group %d: rect=(%d,%d)-(%d,%d), handle=%d",
+                 ctx->group_id, rgnAttr.rect.p0.x, rgnAttr.rect.p0.y, rgnAttr.rect.p1.x, rgnAttr.rect.p1.y, ctx->timestamp.handle);
+
     /* Update the region attributes */
     int ret = IMP_OSD_SetRgnAttr(ctx->timestamp.handle, &rgnAttr);
     if (ret != 0) {
-        IMP_LOG_ERR(TAG, "Failed to set region attributes: %d", ret);
+        IMP_LOG_ERR(TAG, "Failed to set region attributes for Group %d: %d (handle=%d)", ctx->group_id, ret, ctx->timestamp.handle);
         pthread_mutex_unlock(&ctx->mutex);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "Region attributes set successfully for Group %d", ctx->group_id);
 
     /* Show the region */
+    IMP_LOG_INFO(TAG, "Showing timestamp region for Group %d (handle=%d)", ctx->group_id, ctx->timestamp.handle);
     ret = IMP_OSD_ShowRgn(ctx->timestamp.handle, ctx->group_id, 1);
     if (ret != 0) {
         IMP_LOG_ERR(TAG, "Failed to show timestamp region for Group %d: %d (handle=%d)", ctx->group_id, ret, ctx->timestamp.handle);
         pthread_mutex_unlock(&ctx->mutex);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "Timestamp region shown successfully for Group %d", ctx->group_id);
 
     ctx->last_update = time(NULL);
     pthread_mutex_unlock(&ctx->mutex);
+    IMP_LOG_INFO(TAG, "Timestamp update completed successfully for Group %d", ctx->group_id);
     return 0;
 }
 
@@ -1037,11 +1119,11 @@ int osd_reload_font_if_changed(osd_context_t* ctx)
     int config_font_size = ctx->config->osd.time.size;
 
     if (current_font_size != config_font_size) {
-        // IMP_LOG_INFO(TAG,
-        //              "Font size changed from %d to %d, reloading font for group %d",
-        //              current_font_size,
-        //              config_font_size,
-        //              ctx->group_id);
+        IMP_LOG_INFO(TAG,
+                     "Font size changed from %d to %d, reloading font for group %d",
+                     current_font_size,
+                     config_font_size,
+                     ctx->group_id);
 
         /* Update font scales */
         ctx->sft->xScale = (double) config_font_size;
@@ -1053,10 +1135,10 @@ int osd_reload_font_if_changed(osd_context_t* ctx)
         /* Recalculate font metrics */
         osd_precalculate_font_metrics(ctx);
 
-        // IMP_LOG_INFO(TAG,
-        //              "Font reloaded with new size %d for group %d",
-        //              config_font_size,
-        //              ctx->group_id);
+        IMP_LOG_INFO(TAG,
+                     "Font reloaded with new size %d for group %d",
+                     config_font_size,
+                     ctx->group_id);
         return 1; /* Font changed */
     }
 
@@ -1070,7 +1152,7 @@ int osd_setup_font_region(osd_context_t* ctx)
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "Setting up font region for Group %d, handle=%d", ctx->group_id, ctx->region_handles[OSD_REGION_FONT]);
+    IMP_LOG_INFO(TAG, "Setting up font region for Group %d, handle=%d", ctx->group_id, ctx->region_handles[OSD_REGION_FONT]);
 
     IMPOSDRgnAttr rAttrFont;
     memset(&rAttrFont, 0, sizeof(IMPOSDRgnAttr));
@@ -1094,8 +1176,8 @@ int osd_setup_font_region(osd_context_t* ctx)
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "Font region setup complete for Group %d, handle=%d",
-    //              ctx->group_id, ctx->region_handles[OSD_REGION_FONT]);
+    IMP_LOG_INFO(TAG, "Font region setup complete for Group %d, handle=%d",
+                 ctx->group_id, ctx->region_handles[OSD_REGION_FONT]);
     return 0;
 }
 
@@ -1203,8 +1285,8 @@ int osd_setup_logo_region(osd_context_t* ctx)
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "Logo setup complete for group %d: %dx%d at (%d,%d) from %s, opacity %.2f",
-    //              ctx->group_id, picw, pich, pos_x, pos_y, ctx->config->osd.logo.image, ctx->config->osd.logo.opacity);
+    IMP_LOG_INFO(TAG, "Logo setup complete for group %d: %dx%d at (%d,%d) from %s, opacity %.2f",
+                 ctx->group_id, picw, pich, pos_x, pos_y, ctx->config->osd.logo.image, ctx->config->osd.logo.opacity);
 
     return 0;
 }
@@ -1416,24 +1498,27 @@ int osd_update_info_display(osd_context_t* ctx, float iso, float gb_gain, float 
 int osd_context_update(osd_context_t* ctx)
 {
     if (!ctx || !ctx->started) {
-        // IMP_LOG_DBG(TAG,
-        //             "OSD context update skipped - ctx=%p, started=%d",
-        //             ctx,
-        //             ctx ? ctx->started : 0);
+        IMP_LOG_DBG(TAG,
+                    "OSD context update skipped - ctx=%p, started=%d",
+                    ctx,
+                    ctx ? ctx->started : 0);
         return 0;
     }
 
-    // IMP_LOG_DBG(TAG,
-    //             "OSD context update for group %d - time_enabled=%d",
-    //             ctx->group_id,
-    //             ctx->config->osd.time.enabled);
+    IMP_LOG_DBG(TAG,
+                "OSD context update for group %d - time_enabled=%d",
+                ctx->group_id,
+                ctx->config->osd.time.enabled);
 
     /* Check if font configuration changed */
     osd_reload_font_if_changed(ctx);
 
     /* Update timestamp if enabled */
     if (ctx->config->osd.time.enabled) {
+        IMP_LOG_DBG(TAG, "Updating timestamp for group %d (enabled)", ctx->group_id);
         osd_update_timestamp_current(ctx);
+    } else {
+        IMP_LOG_DBG(TAG, "Timestamp disabled for group %d, skipping update", ctx->group_id);
     }
 
     return 0;
@@ -1453,7 +1538,9 @@ int osd_context_stop(osd_context_t* ctx)
     }
 
     ctx->started = false;
-    // IMP_LOG_INFO(TAG, "OSD stopped for group %d", ctx->group_id);
+
+    IMP_LOG_INFO(TAG, "OSD stopped for group %d", ctx->group_id);
+
     return 0;
 }
 
@@ -1461,6 +1548,7 @@ int osd_context_stop(osd_context_t* ctx)
 int osd_context_cleanup(osd_context_t* ctx)
 {
     if (!ctx) {
+        IMP_LOG_ERR(TAG, "Invalid OSD context for cleanup");
         return -1;
     }
 
@@ -1525,7 +1613,7 @@ int osd_context_cleanup(osd_context_t* ctx)
     ctx->initialized = false;
     ctx->started = false;
 
-    // IMP_LOG_INFO(TAG, "OSD cleanup completed for group %d", ctx->group_id);
+    IMP_LOG_INFO(TAG, "OSD cleanup completed for group %d", ctx->group_id);
     return 0;
 }
 
@@ -1577,19 +1665,20 @@ static void osd_apply_module_config_to_stream(stream_config_t* stream_config, in
 
     /* Note: Info settings not supported in legacy stream config structure */
 
-    // IMP_LOG_DBG(TAG, "Applied module config to stream %d: enabled=%s, time_enabled=%s",
-    //             stream_index,
-    //             stream_config->osd.enabled ? "true" : "false",
-    //             stream_config->osd.time.enabled ? "true" : "false");
+    IMP_LOG_INFO(TAG, "Applied module config to stream %d: enabled=%s, time_enabled=%s, format='%s'",
+                stream_index,
+                stream_config->osd.enabled ? "true" : "false",
+                stream_config->osd.time.enabled ? "true" : "false",
+                stream_config->osd.time.format);
 }
 
 /* Initialize OSD for a specific group - bridge function */
 int osd_init(int group_id, int stream_width, int stream_height)
 {
-    // IMP_LOG_INFO(TAG, "Initializing OSD for Group %d (%dx%d)", group_id, stream_width, stream_height);
+    IMP_LOG_INFO(TAG, "Initializing OSD for Group %d (%dx%d)", group_id, stream_width, stream_height);
 
     if (group_id < 0 || group_id >= FS_CHN_NUM) {
-        IMP_LOG_ERR(TAG, "Invalid Group ID: %d", group_id);
+        IMP_LOG_ERR(TAG, "Invalid Group ID: %d (FS_CHN_NUM=%d)", group_id, FS_CHN_NUM);
         return -1;
     }
 
@@ -1599,6 +1688,7 @@ int osd_init(int group_id, int stream_width, int stream_height)
         IMP_LOG_INFO(TAG, "Channel %d is not enabled, skipping OSD initialization", group_id);
         return 0;
     }
+    IMP_LOG_INFO(TAG, "Channel %d is enabled", group_id);
 
     /* Skip OSD for channel 3 as it might be a duplicate/auxiliary channel */
     if (group_id >= 3) {
@@ -1612,18 +1702,19 @@ int osd_init(int group_id, int stream_width, int stream_height)
         IMP_LOG_ERR(TAG, "Global OSD configuration is not available");
         return -1;
     }
+    IMP_LOG_INFO(TAG, "Global config available, stream_count=%d", g_config->stream_count);
 
     /* Map group_id to stream configuration */
     stream_config_t* stream_config = NULL;
     if (group_id < g_config->stream_count) {
         stream_config = &g_config->streams[group_id];
-        // IMP_LOG_INFO(TAG, "Using stream%d configuration for channel %d", group_id, group_id);
+        IMP_LOG_INFO(TAG, "Using stream%d configuration for channel %d", group_id, group_id);
     } else {
         /* For channels beyond stream count, use the last available stream config */
         int last_stream = g_config->stream_count - 1;
         if (last_stream >= 0) {
             stream_config = &g_config->streams[last_stream];
-            // IMP_LOG_INFO(TAG, "Using stream%d configuration for channel %d (fallback)", last_stream, group_id);
+            IMP_LOG_INFO(TAG, "Using stream%d configuration for channel %d (fallback)", last_stream, group_id);
         } else {
             IMP_LOG_ERR(TAG, "No stream configuration available for channel %d", group_id);
             return -1;
@@ -1631,28 +1722,42 @@ int osd_init(int group_id, int stream_width, int stream_height)
     }
 
     /* Check if OSD module is enabled and this stream is enabled */
+    IMP_LOG_INFO(TAG, "OSD module state - initialized=%s, enabled=%s",
+                 g_osd_module_state.initialized ? "true" : "false",
+                 g_osd_module_state.config.enabled ? "true" : "false");
     if (!g_osd_module_state.initialized || !g_osd_module_state.config.enabled) {
         IMP_LOG_INFO(TAG, "OSD module disabled, skipping channel %d", group_id);
         return 0;
     }
 
     /* Check if this specific stream is enabled in module config */
-    if (group_id >= 2 || !g_osd_module_state.config.streams[group_id].enabled) {
+    if (group_id >= 2) {
+        IMP_LOG_INFO(TAG, "Channel %d >= 2, skipping OSD", group_id);
+        return 0;
+    }
+
+    bool stream_enabled = g_osd_module_state.config.streams[group_id].enabled;
+    IMP_LOG_INFO(TAG, "Stream %d enabled in module config: %s", group_id, stream_enabled ? "true" : "false");
+    if (!stream_enabled) {
         IMP_LOG_INFO(TAG, "OSD disabled for channel %d in module config", group_id);
         return 0;
     }
 
     /* Apply module configuration to stream configuration */
+    IMP_LOG_INFO(TAG, "Applying module configuration to stream %d", group_id);
     osd_apply_module_config_to_stream(stream_config, group_id);
 
     /* Allocate OSD context */
+    IMP_LOG_INFO(TAG, "Allocating OSD context for group %d", group_id);
     osd_context_t* ctx = (osd_context_t*)malloc(sizeof(osd_context_t));
     if (!ctx) {
         IMP_LOG_ERR(TAG, "Failed to allocate OSD context for group %d", group_id);
         return -1;
     }
+    IMP_LOG_INFO(TAG, "OSD context allocated successfully for group %d", group_id);
 
     /* Initialize OSD context */
+    IMP_LOG_INFO(TAG, "Initializing OSD context for group %d", group_id);
     int ret = osd_context_init(ctx, group_id, stream_width, stream_height, stream_config);
     if (ret != 0) {
         IMP_LOG_ERR(TAG, "Failed to initialize OSD context for group %d", group_id);
@@ -1660,14 +1765,14 @@ int osd_init(int group_id, int stream_width, int stream_height)
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "OSD initialized successfully for Group %d", group_id);
+    IMP_LOG_INFO(TAG, "OSD initialized successfully for Group %d - COMPLETE SUCCESS", group_id);
     return 0;
 }
 
 /* Set timestamp OSD - bridge function */
 int osd_set_timestamp(int group_id, const char* timestamp)
 {
-    // IMP_LOG_DBG(TAG, "Setting Timestamp OSD for Group %d: %s", group_id, timestamp);
+    IMP_LOG_DBG(TAG, "Setting Timestamp OSD for Group %d: %s", group_id, timestamp);
 
     if (group_id < 0 || group_id >= FS_CHN_NUM || !g_osd_contexts[group_id]) {
         IMP_LOG_ERR(TAG, "Invalid Group ID or uninitialized OSD context: %d", group_id);
@@ -1689,7 +1794,7 @@ int osd_set_timestamp(int group_id, const char* timestamp)
 /* Set logo OSD - bridge function */
 int osd_set_logo(int group_id, int x, int y, const uint8_t* logo_data, int width, int height)
 {
-    // IMP_LOG_DBG(TAG, "Setting Logo OSD for Group %d at (%d,%d) size %dx%d", group_id, x, y, width, height);
+    IMP_LOG_DBG(TAG, "Setting Logo OSD for Group %d at (%d,%d) size %dx%d", group_id, x, y, width, height);
 
     if (group_id < 0 || group_id >= FS_CHN_NUM || !g_osd_contexts[group_id]) {
         IMP_LOG_ERR(TAG, "Invalid Group ID or uninitialized OSD context: %d", group_id);
@@ -1711,14 +1816,14 @@ int osd_set_logo(int group_id, int x, int y, const uint8_t* logo_data, int width
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "Logo OSD enabled for Group %d", group_id);
+    IMP_LOG_INFO(TAG, "Logo OSD enabled for Group %d", group_id);
     return 0;
 }
 
 /* Set text OSD - bridge function */
 int osd_set_text(int group_id, int x, int y, const char* text)
 {
-    // IMP_LOG_DBG(TAG, "Setting Text OSD for Group %d at (%d,%d): %s", group_id, x, y, text);
+    IMP_LOG_DBG(TAG, "Setting Text OSD for Group %d at (%d,%d): %s", group_id, x, y, text);
 
     if (group_id < 0 || group_id >= FS_CHN_NUM || !g_osd_contexts[group_id]) {
         IMP_LOG_ERR(TAG, "Invalid Group ID or uninitialized OSD context: %d", group_id);
@@ -1736,7 +1841,7 @@ int osd_set_text(int group_id, int x, int y, const char* text)
     /* Enable timestamp if not already enabled */
     if (!ctx->config->osd.time.enabled) {
         ctx->config->osd.time.enabled = true;
-        // IMP_LOG_INFO(TAG, "Enabled text OSD for Group %d", group_id);
+        IMP_LOG_INFO(TAG, "Enabled text OSD for Group %d", group_id);
     }
 
     /* Create text bitmap and update region */
@@ -1792,7 +1897,7 @@ int osd_set_text(int group_id, int x, int y, const char* text)
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "Text OSD set successfully for Group %d", group_id);
+    IMP_LOG_INFO(TAG, "Text OSD set successfully for Group %d", group_id);
     return 0;
 }
 
@@ -1809,7 +1914,7 @@ int osd_update(int group_id)
 /* Cleanup OSD - bridge function */
 int osd_cleanup(int group_id)
 {
-    // IMP_LOG_INFO(TAG, "Cleaning up OSD for Group %d", group_id);
+    IMP_LOG_INFO(TAG, "Cleaning up OSD for Group %d", group_id);
 
     if (group_id < 0 || group_id >= FS_CHN_NUM) {
         IMP_LOG_ERR(TAG, "Invalid Group ID: %d", group_id);
@@ -1817,7 +1922,7 @@ int osd_cleanup(int group_id)
     }
 
     if (!g_osd_contexts[group_id]) {
-        // IMP_LOG_DBG(TAG, "OSD context for group %d already cleaned up", group_id);
+        IMP_LOG_DBG(TAG, "OSD context for group %d already cleaned up", group_id);
         return 0;
     }
 
@@ -1847,34 +1952,40 @@ int osd_cleanup(int group_id)
     free(g_osd_contexts[group_id]);
     g_osd_contexts[group_id] = NULL;
 
-    // IMP_LOG_INFO(TAG, "OSD cleanup completed for group %d", group_id);
+    IMP_LOG_INFO(TAG, "OSD cleanup completed for group %d", group_id);
+
     return 0;
 }
 
 /* Cleanup all OSD contexts - bridge function */
 void osd_cleanup_all(void)
 {
-    // IMP_LOG_INFO(TAG, "Cleaning up all OSD contexts");
+    IMP_LOG_INFO(TAG, "Cleaning up all OSD contexts");
 
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (g_osd_contexts[i]) {
-            // IMP_LOG_INFO(TAG, "Cleaning up OSD context for group %d", i);
+            IMP_LOG_INFO(TAG, "Cleaning up OSD context for group %d", i);
             osd_context_cleanup(g_osd_contexts[i]);
             free(g_osd_contexts[i]);
             g_osd_contexts[i] = NULL;
         }
     }
 
-    // IMP_LOG_INFO(TAG, "All OSD contexts cleaned up");
+    IMP_LOG_INFO(TAG, "All OSD contexts cleaned up");
 }
 
 /* Update timestamp with current time */
 int osd_update_timestamp_current(osd_context_t* ctx)
 {
-    if (!ctx || !ctx->config->osd.time.enabled) {
+    if (!ctx) {
+        IMP_LOG_ERR(TAG, "osd_update_timestamp_current called with NULL context");
         return 0;
     }
 
+    if (!ctx->config->osd.time.enabled) {
+        IMP_LOG_DBG(TAG, "Timestamp disabled for group %d, skipping update", ctx->group_id);
+        return 0;
+    }
     time_t now;
     char timestamp[64];
     time(&now);
@@ -1882,7 +1993,7 @@ int osd_update_timestamp_current(osd_context_t* ctx)
 
     const char* format = ctx->validated_time_format;
     if (strftime(timestamp, sizeof(timestamp), format, tm_info) == 0) {
-        IMP_LOG_ERR(TAG, "strftime failed with validated format '%s'", format);
+        IMP_LOG_ERR(TAG, "strftime failed with validated format '%s' for group %d", format, ctx->group_id);
         return -1;
     }
 
@@ -1895,7 +2006,7 @@ int osd_update_timestamp_current(osd_context_t* ctx)
         /* Use the same time for debugging to avoid race conditions */
         char debug_time[32];
         strftime(debug_time, sizeof(debug_time), "%H:%M:%S", tm_info);
-        // IMP_LOG_INFO(TAG, "Setting Timestamp OSD for Group %d: %s (system_time=%s)", ctx->group_id, timestamp, debug_time);
+        IMP_LOG_INFO(TAG, "Setting Timestamp OSD for Group %d: %s (system_time=%s)", ctx->group_id, timestamp, debug_time);
 
         /* Update cache with new timestamp */
         strncpy(last_timestamp, timestamp, sizeof(last_timestamp) - 1);
@@ -1903,6 +2014,7 @@ int osd_update_timestamp_current(osd_context_t* ctx)
         last_timestamp_time = now;
     } else {
         /* Timestamp hasn't changed, skip bitmap regeneration */
+        IMP_LOG_DBG(TAG, "Timestamp unchanged for group %d, skipping update", ctx->group_id);
         return 0;
     }
 
@@ -2004,23 +2116,35 @@ int osd_module_init(void* config)
     /* Copy configuration */
     memcpy(&g_osd_module_state.config, config, sizeof(osd_module_config_t));
 
-    /* Debug: Show what configuration was copied */
-    // IMP_LOG_DBG(TAG, "OSD module init - copied config: enabled=%s, stream0_enabled=%s, stream1_enabled=%s",
-    //             g_osd_module_state.config.enabled ? "true" : "false",
-    //             g_osd_module_state.config.streams[0].enabled ? "true" : "false",
-    //             g_osd_module_state.config.streams[1].enabled ? "true" : "false");
+    /* Show what configuration was copied */
+    IMP_LOG_INFO(TAG, "OSD module init - copied config: enabled=%s, stream0_enabled=%s, stream1_enabled=%s",
+                g_osd_module_state.config.enabled ? "true" : "false",
+                g_osd_module_state.config.streams[0].enabled ? "true" : "false",
+                g_osd_module_state.config.streams[1].enabled ? "true" : "false");
+
+    IMP_LOG_INFO(TAG, "Stream 0 time config: enabled=%s, format='%s', font='%s', size=%d",
+                g_osd_module_state.config.streams[0].time.enabled ? "true" : "false",
+                g_osd_module_state.config.streams[0].time.format,
+                g_osd_module_state.config.streams[0].time.font,
+                g_osd_module_state.config.streams[0].time.size);
+
+    IMP_LOG_INFO(TAG, "Stream 1 time config: enabled=%s, format='%s', font='%s', size=%d",
+                g_osd_module_state.config.streams[1].time.enabled ? "true" : "false",
+                g_osd_module_state.config.streams[1].time.format,
+                g_osd_module_state.config.streams[1].time.font,
+                g_osd_module_state.config.streams[1].time.size);
 
     /* The actual OSD initialization happens in main.c using the existing system */
     /* This module just provides the interface and configuration management */
 
     g_osd_module_state.initialized = true;
-    // IMP_LOG_INFO(TAG, "OSD module initialized successfully");
+    IMP_LOG_INFO(TAG, "OSD module initialized successfully");
     return 0;
 }
 
 int osd_module_start(void)
 {
-    // IMP_LOG_INFO(TAG, "Starting OSD module");
+    IMP_LOG_INFO(TAG, "Starting OSD module");
 
     if (!g_osd_module_state.initialized) {
         IMP_LOG_ERR(TAG, "OSD module not initialized");
@@ -2041,19 +2165,20 @@ int osd_module_start(void)
     /* This module just tracks the state */
 
     /* Start the independent OSD timer thread */
+    IMP_LOG_INFO(TAG, "Starting OSD timer thread");
     if (osd_start_timer_thread() != 0) {
         IMP_LOG_ERR(TAG, "Failed to start OSD timer thread");
         return -1;
     }
 
     g_osd_module_state.running = true;
-    // IMP_LOG_INFO(TAG, "OSD module started successfully with independent timer thread");
+    IMP_LOG_INFO(TAG, "OSD module started successfully with independent timer thread");
     return 0;
 }
 
 int osd_module_stop(void)
 {
-    // IMP_LOG_INFO(TAG, "Stopping OSD module");
+    IMP_LOG_INFO(TAG, "Stopping OSD module");
 
     if (!g_osd_module_state.running) {
         IMP_LOG_WARN(TAG, "OSD module not running");
@@ -2067,13 +2192,13 @@ int osd_module_stop(void)
     /* This module just tracks the state */
 
     g_osd_module_state.running = false;
-    // IMP_LOG_INFO(TAG, "OSD module stopped successfully");
+    IMP_LOG_INFO(TAG, "OSD module stopped successfully");
     return 0;
 }
 
 int osd_module_cleanup(void)
 {
-    // IMP_LOG_INFO(TAG, "Cleaning up OSD module");
+    IMP_LOG_INFO(TAG, "Cleaning up OSD module");
 
     if (g_osd_module_state.running) {
         osd_module_stop();
@@ -2089,7 +2214,7 @@ int osd_module_cleanup(void)
     /* Reset state */
     memset(&g_osd_module_state, 0, sizeof(g_osd_module_state));
 
-    // IMP_LOG_INFO(TAG, "OSD module cleaned up successfully");
+    IMP_LOG_INFO(TAG, "OSD module cleaned up successfully");
     return 0;
 }
 
@@ -2097,14 +2222,14 @@ int osd_module_cleanup(void)
 int osd_module_set_rtsp_server(rtsp_server_t* server)
 {
     g_osd_module_state.rtsp_server = server;
-    // IMP_LOG_INFO(TAG, "RTSP server reference set for OSD module");
+    IMP_LOG_INFO(TAG, "RTSP server reference set for OSD module");
     return 0;
 }
 
 /* Independent OSD timer thread - updates timestamps every second */
 static void* osd_timer_thread(void* arg)
 {
-    // IMP_LOG_INFO(TAG, "OSD timer thread started");
+    IMP_LOG_INFO(TAG, "OSD timer thread started");
 
     while (g_osd_module_state.timer_thread_running) {
         pthread_mutex_lock(&g_osd_module_state.timer_mutex);
@@ -2118,9 +2243,24 @@ static void* osd_timer_thread(void* arg)
                     client_count = rtsp_server_get_client_count(g_osd_module_state.rtsp_server, channel);
                 }
 
+                // IMP_LOG_DBG(TAG, "Timer thread - channel %d: initialized=%s, client_count=%d",
+                //            channel,
+                //            g_osd_contexts[channel]->initialized ? "true" : "false",
+                //            client_count);
+
                 /* Update OSD if channel has clients or if we want to update regardless */
                 if (client_count > 0) {
+                    IMP_LOG_DBG(TAG, "Updating timestamp for channel %d (has %d clients)", channel, client_count);
                     osd_update_timestamp_current(g_osd_contexts[channel]);
+                } else {
+                    // IMP_LOG_DBG(TAG, "Skipping timestamp update for channel %d (no clients)", channel);
+                }
+            } else {
+                if (channel < MAX_STREAMS) {
+                    IMP_LOG_DBG(TAG, "Channel %d not available - ctx=%p, initialized=%s",
+                               channel,
+                               g_osd_contexts[channel],
+                               g_osd_contexts[channel] ? (g_osd_contexts[channel]->initialized ? "true" : "false") : "N/A");
                 }
             }
         }
@@ -2131,7 +2271,7 @@ static void* osd_timer_thread(void* arg)
         sleep(1);
     }
 
-    // IMP_LOG_INFO(TAG, "OSD timer thread stopped");
+    IMP_LOG_INFO(TAG, "OSD timer thread stopped");
     return NULL;
 }
 
@@ -2151,7 +2291,7 @@ static int osd_start_timer_thread(void)
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "OSD timer thread started successfully");
+    IMP_LOG_INFO(TAG, "OSD timer thread started successfully");
     return 0;
 }
 
@@ -2162,7 +2302,7 @@ static int osd_stop_timer_thread(void)
         return 0;
     }
 
-    // IMP_LOG_INFO(TAG, "Stopping OSD timer thread");
+    IMP_LOG_INFO(TAG, "Stopping OSD timer thread");
     g_osd_module_state.timer_thread_running = false;
 
     /* Wait for thread to finish */
@@ -2171,7 +2311,7 @@ static int osd_stop_timer_thread(void)
         return -1;
     }
 
-    // IMP_LOG_INFO(TAG, "OSD timer thread stopped successfully");
+    IMP_LOG_INFO(TAG, "OSD timer thread stopped successfully");
     return 0;
 }
 
@@ -2185,7 +2325,7 @@ int osd_module_rtsp_frame_callback(rtsp_server_t* server, int channel,
 
     /* Only update OSD for the specific channel that triggered this callback */
     if (channel < 0 || channel >= MAX_STREAMS || !g_osd_contexts[channel] || !g_osd_contexts[channel]->initialized) {
-        // IMP_LOG_DBG(TAG, "Skipping OSD update for channel %d (not initialized or invalid)", channel);
+        IMP_LOG_DBG(TAG, "Skipping OSD update for channel %d (not initialized or invalid)", channel);
         return 0;
     }
 
@@ -2239,6 +2379,7 @@ int osd_module_get_config_size(void)
 
 int osd_module_config_parse(json_object* json, void* config)
 {
+
     if (!json || !config) {
         return -1;
     }

@@ -93,8 +93,7 @@ static void* server_thread_func(void* arg);
 
 rtsp_server_t* rtsp_server_create(const rtsp_server_config_t* config)
 {
-    // IMP_LOG_DBG(TAG, "Creating RTSP server on port %d", config->port);
-
+    IMP_LOG_DBG(TAG, "Creating RTSP server on port %d", config->port);
     rtsp_server_t* server = calloc(1, sizeof(rtsp_server_t));
     if (!server) {
         IMP_LOG_ERR(TAG, "Failed to allocate RTSP server structure");
@@ -102,6 +101,7 @@ rtsp_server_t* rtsp_server_create(const rtsp_server_config_t* config)
     }
 
     /* Copy configuration */
+    IMP_LOG_DBG(TAG, "Copying RTSP server configuration");
     memcpy(&server->config, config, sizeof(rtsp_server_config_t));
 
     /* Initialize state */
@@ -124,7 +124,9 @@ rtsp_server_t* rtsp_server_create(const rtsp_server_config_t* config)
     server->total_packets_sent = 0;
 
     /* Initialize GOP cache */
+    IMP_LOG_DBG(TAG, "Initializing GOP cache");
     for (int i = 0; i < MAX_VIDEO_STREAMS; i++) {
+        IMP_LOG_DBG(TAG, "Initializing GOP cache for channel %d", i);
         server->gop_cache[i].frame_count = 0;
         server->gop_cache[i].valid = false;
         server->gop_cache[i].total_size = 0;
@@ -132,7 +134,9 @@ rtsp_server_t* rtsp_server_create(const rtsp_server_config_t* config)
         pthread_mutex_init(&server->gop_cache[i].mutex, NULL);
 
         /* Initialize frame buffers */
+        IMP_LOG_DBG(TAG, "Initializing frame buffers for channel %d", i);
         for (int j = 0; j < MAX_GOP_FRAMES; j++) {
+            IMP_LOG_DBG(TAG, "Allocating frame buffer %d for channel %d", j, i);
             server->gop_cache[i].frames[j].data = malloc(MAX_FRAME_SIZE);
             server->gop_cache[i].frames[j].size = 0;
             server->gop_cache[i].frames[j].is_idr = false;
@@ -140,7 +144,9 @@ rtsp_server_t* rtsp_server_create(const rtsp_server_config_t* config)
     }
 
     /* Initialize clients */
+    IMP_LOG_DBG(TAG, "Initializing clients");
     for (int i = 0; i < MAX_RTSP_CLIENTS; i++) {
+        IMP_LOG_DBG(TAG, "Initializing client %d", i);
         memset(&server->clients[i], 0, sizeof(rtsp_client_t));
         server->clients[i].socket_fd = -1;
         server->clients[i].rtp_socket_fd = -1;
@@ -149,53 +155,71 @@ rtsp_server_t* rtsp_server_create(const rtsp_server_config_t* config)
         pthread_mutex_init(&server->clients[i].ssl_mutex, NULL);
     }
 
-    // IMP_LOG_DBG(TAG, "RTSP server created successfully");
+    IMP_LOG_DBG(TAG, "RTSP server created successfully");
     return server;
 }
 
 void rtsp_server_destroy(rtsp_server_t* server)
 {
-    if (!server)
+    IMP_LOG_DBG(TAG, "Destroying RTSP server");
+    if (!server) {
+        IMP_LOG_ERR(TAG, "Invalid server for destroy");
         return;
-
-    // IMP_LOG_DBG(TAG, "Destroying RTSP server");
+    }
 
     /* Stop server if running */
-    rtsp_server_stop(server);
+    IMP_LOG_DBG(TAG, "Stopping RTSP server if running");
+    if (server->running) {
+        rtsp_server_stop(server);
+        IMP_LOG_DBG(TAG, "RTSP server stopped");
+    }
 
     /* Clean up streams */
+    IMP_LOG_DBG(TAG, "Cleaning up streams");
     if (server->streams) {
+        IMP_LOG_DBG(TAG, "Freeing streams array");
         free(server->streams);
     }
 
     /* Clean up clients */
+    IMP_LOG_DBG(TAG, "Cleaning up clients");
     for (int i = 0; i < MAX_RTSP_CLIENTS; i++) {
+        IMP_LOG_DBG(TAG, "Cleaning up client %d", i);
         cleanup_client(&server->clients[i]);
     }
 
     /* Clean up GOP cache */
+    IMP_LOG_DBG(TAG, "Cleaning up GOP cache");
     for (int i = 0; i < MAX_VIDEO_STREAMS; i++) {
+        IMP_LOG_DBG(TAG, "Cleaning up GOP cache for channel %d", i);
         pthread_mutex_destroy(&server->gop_cache[i].mutex);
         for (int j = 0; j < MAX_GOP_FRAMES; j++) {
+            IMP_LOG_DBG(TAG, "Freeing frame buffer %d for channel %d", j, i);
             free(server->gop_cache[i].frames[j].data);
         }
     }
 
     /* Close listen socket */
+    IMP_LOG_DBG(TAG, "Closing listen socket");
     if (server->listen_socket >= 0) {
+        IMP_LOG_DBG(TAG, "Closing listen socket %d", server->listen_socket);
         close(server->listen_socket);
     }
 
     /* Close TLS listen socket */
+    IMP_LOG_DBG(TAG, "Closing TLS listen socket");
     if (server->tls_listen_socket >= 0) {
+        IMP_LOG_DBG(TAG, "Closing TLS listen socket %d", server->tls_listen_socket);
         close(server->tls_listen_socket);
     }
 
     /* Clean up TLS context */
+    IMP_LOG_DBG(TAG, "Cleaning up TLS context");
     rtsp_server_tls_cleanup(server);
 
+    /* Free server structure */
     free(server);
-    // IMP_LOG_DBG(TAG, "RTSP server destroyed");
+    IMP_LOG_DBG(TAG, "RTSP server destroyed");
 }
 
 int rtsp_server_add_stream(rtsp_server_t* server,
@@ -206,13 +230,14 @@ int rtsp_server_add_stream(rtsp_server_t* server,
         return -1;
     }
 
-    // IMP_LOG_DBG(TAG,
-    //             "Adding stream: %s (channel %d, %s)",
-    //             stream_config->stream_name,
-    //             stream_config->channel,
-    //             stream_config->codec == VIDEO_CODEC_H265 ? "H265" : "H264");
+    IMP_LOG_DBG(TAG,
+                "Adding stream: %s (channel %d, %s)",
+                stream_config->stream_name,
+                stream_config->channel,
+                stream_config->codec == VIDEO_CODEC_H265 ? "H265" : "H264");
 
     /* Reallocate streams array */
+    IMP_LOG_DBG(TAG, "Reallocating streams array (current count: %d)", server->stream_count);
     video_stream_config_t* new_streams = realloc(server->streams,
                                                  (server->stream_count + 1)
                                                      * sizeof(video_stream_config_t));
@@ -224,12 +249,13 @@ int rtsp_server_add_stream(rtsp_server_t* server,
     server->streams = new_streams;
 
     /* Copy stream configuration */
+    IMP_LOG_DBG(TAG, "Copying stream configuration");
     video_stream_config_t* stream = &server->streams[server->stream_count];
     memcpy(stream, stream_config, sizeof(video_stream_config_t));
 
     server->stream_count++;
 
-    // IMP_LOG_DBG(TAG, "Stream added successfully (total streams: %d)", server->stream_count);
+    IMP_LOG_DBG(TAG, "Stream added successfully (total streams: %d)", server->stream_count);
     return 0;
 }
 
@@ -239,14 +265,15 @@ static void request_idr_frame(int channel)
     extern int IMP_Encoder_RequestIDR(int encChn);
 
     /* Request IDR frame once */
+    IMP_LOG_INFO(TAG, "Requesting IDR frame for channel %d", channel);
     int ret = IMP_Encoder_RequestIDR(channel);
     if (ret < 0) {
         IMP_LOG_ERR(TAG,
                     "WARNING: Failed to request IDR frame for channel %d: ret=%d",
                     channel,
                     ret);
-    // } else {
-    //     IMP_LOG_INFO(TAG, "IDR frame requested for channel %d", channel);
+    } else {
+        IMP_LOG_INFO(TAG, "IDR frame requested for channel %d", channel);
     }
 }
 
@@ -267,20 +294,20 @@ int rtsp_server_start(rtsp_server_t* server,
         return 0;
     }
 
-    // IMP_LOG_INFO(TAG, "Starting RTSP server");
+    IMP_LOG_INFO(TAG, "Starting RTSP server");
 
     /* Store callback */
     server->frame_callback = frame_callback;
     server->user_data = user_data;
 
     /* Create listen socket */
-    // IMP_LOG_INFO(TAG, "Creating listen socket...");
+    IMP_LOG_INFO(TAG, "Creating listen socket...");
     server->listen_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server->listen_socket < 0) {
         IMP_LOG_ERR(TAG, "Failed to create listen socket: %s", strerror(errno));
         return -1;
     }
-    // IMP_LOG_INFO(TAG, "Listen socket created successfully");
+    IMP_LOG_INFO(TAG, "Listen socket created successfully");
 
     /* Set socket options */
     int opt = 1;
@@ -289,7 +316,7 @@ int rtsp_server_start(rtsp_server_t* server,
     }
 
     /* Bind socket */
-    // IMP_LOG_INFO(TAG, "Binding socket to port %d...", server->config.port);
+    IMP_LOG_INFO(TAG, "Binding socket to port %d...", server->config.port);
     memset(&server->server_addr, 0, sizeof(server->server_addr));
     server->server_addr.sin_family = AF_INET;
     server->server_addr.sin_addr.s_addr = INADDR_ANY;
@@ -304,21 +331,21 @@ int rtsp_server_start(rtsp_server_t* server,
         server->listen_socket = -1;
         return -1;
     }
-    // IMP_LOG_INFO(TAG, "Socket bound successfully to port %d", server->config.port);
+    IMP_LOG_INFO(TAG, "Socket bound successfully to port %d", server->config.port);
 
     /* Listen for connections */
-    // IMP_LOG_INFO(TAG, "Setting socket to listen mode...");
+    IMP_LOG_INFO(TAG, "Setting socket to listen mode...");
     if (listen(server->listen_socket, server->config.max_clients) < 0) {
         IMP_LOG_ERR(TAG, "Failed to listen on socket: %s", strerror(errno));
         close(server->listen_socket);
         server->listen_socket = -1;
         return -1;
     }
-    // IMP_LOG_INFO(TAG, "Socket listening successfully");
+    IMP_LOG_INFO(TAG, "Socket listening successfully");
 
     /* Initialize TLS if enabled */
     if (server->config.tls_enabled) {
-        // IMP_LOG_INFO(TAG, "Initializing TLS for RTSPS server...");
+        IMP_LOG_INFO(TAG, "Initializing TLS for RTSPS server...");
         if (rtsp_server_tls_init(server) < 0) {
             IMP_LOG_ERR(TAG, "Failed to initialize TLS");
             close(server->listen_socket);
@@ -327,7 +354,7 @@ int rtsp_server_start(rtsp_server_t* server,
         }
 
         /* Create TLS listen socket */
-        // IMP_LOG_INFO(TAG, "Creating TLS listen socket...");
+        IMP_LOG_INFO(TAG, "Creating TLS listen socket...");
         server->tls_listen_socket = socket(AF_INET, SOCK_STREAM, 0);
         if (server->tls_listen_socket < 0) {
             IMP_LOG_ERR(TAG, "Failed to create TLS listen socket: %s", strerror(errno));
@@ -343,7 +370,7 @@ int rtsp_server_start(rtsp_server_t* server,
         }
 
         /* Bind TLS socket */
-        // IMP_LOG_INFO(TAG, "Binding TLS socket to port %d...", server->config.tls_port);
+        IMP_LOG_INFO(TAG, "Binding TLS socket to port %d...", server->config.tls_port);
         memset(&server->tls_server_addr, 0, sizeof(server->tls_server_addr));
         server->tls_server_addr.sin_family = AF_INET;
         server->tls_server_addr.sin_addr.s_addr = INADDR_ANY;
@@ -360,7 +387,7 @@ int rtsp_server_start(rtsp_server_t* server,
             server->listen_socket = -1;
             return -1;
         }
-        // IMP_LOG_INFO(TAG, "TLS socket bound successfully to port %d", server->config.tls_port);
+        IMP_LOG_INFO(TAG, "TLS socket bound successfully to port %d", server->config.tls_port);
 
         /* Listen for TLS connections */
         if (listen(server->tls_listen_socket, server->config.max_clients) < 0) {
@@ -372,10 +399,11 @@ int rtsp_server_start(rtsp_server_t* server,
             server->listen_socket = -1;
             return -1;
         }
-        // IMP_LOG_INFO(TAG, "TLS socket listening successfully on port %d", server->config.tls_port);
+        IMP_LOG_INFO(TAG, "TLS socket listening successfully on port %d", server->config.tls_port);
     }
 
     /* STEP 2: Re-enable RTSP server thread */
+    IMP_LOG_INFO(TAG, "Starting RTSP server thread...");
     server->running = true;
     server->should_stop = false;
 
@@ -387,9 +415,10 @@ int rtsp_server_start(rtsp_server_t* server,
         server->listen_socket = -1;
         return -1;
     }
-    // IMP_LOG_INFO(TAG, "RTSP server thread started successfully");
+    IMP_LOG_INFO(TAG, "RTSP server thread started successfully");
 
     /* STEP 2: Re-enable RTP thread */
+    IMP_LOG_INFO(TAG, "Starting RTP thread...");
     ret = pthread_create(&server->rtp_thread, NULL, rtp_thread_func, server);
     if (ret != 0) {
         IMP_LOG_ERR(TAG, "Failed to create RTP thread: %s", strerror(ret));
@@ -400,9 +429,9 @@ int rtsp_server_start(rtsp_server_t* server,
         server->listen_socket = -1;
         return -1;
     }
-    // IMP_LOG_INFO(TAG, "RTP thread started successfully");
+    IMP_LOG_INFO(TAG, "RTP thread started successfully");
 
-    // IMP_LOG_INFO(TAG, "RTSP server started successfully on port %d", server->config.port);
+    IMP_LOG_INFO(TAG, "RTSP server started successfully on port %d", server->config.port);
     return 0;
 }
 
@@ -412,37 +441,54 @@ int rtsp_server_stop(rtsp_server_t* server)
         return 0;
     }
 
-    // IMP_LOG_INFO(TAG, "Stopping RTSP server");
+    IMP_LOG_INFO(TAG, "Stopping RTSP server");
 
     /* Signal threads to stop */
     server->should_stop = true;
 
     /* Close listen socket to unblock accept() */
     if (server->listen_socket >= 0) {
+        IMP_LOG_INFO(TAG, "Closing listen socket %d", server->listen_socket);
         close(server->listen_socket);
         server->listen_socket = -1;
     }
 
     /* Wait for threads to finish */
+    IMP_LOG_INFO(TAG, "Waiting for server thread to finish...");
     pthread_join(server->server_thread, NULL);
     pthread_join(server->rtp_thread, NULL);
 
+    /* Mark server as stopped */
     server->running = false;
 
-    // IMP_LOG_INFO(TAG, "RTSP server stopped");
+    IMP_LOG_INFO(TAG, "RTSP server stopped");
     return 0;
 }
 
 int rtsp_server_get_client_count(rtsp_server_t* server, int channel)
 {
     if (!server) {
+        IMP_LOG_ERR(TAG, "Invalid server pointer");
         return 0;
     }
 
+    if (channel < 0 || channel >= FS_CHN_NUM) {
+        IMP_LOG_ERR(TAG, "Invalid channel %d (must be 0-%d)", channel, FS_CHN_NUM - 1);
+        return 0;
+    }
+
+    /* Count active clients for the specified channel */
+    // IMP_LOG_DBG(TAG, "Counting clients for channel %d", channel);
     int count = 0;
     for (int i = 0; i < MAX_RTSP_CLIENTS; i++) {
+        // IMP_LOG_DBG(TAG, "Checking client %d: active=%s, state=%d, video_channel=%d",
+        //            i,
+        //            server->clients[i].active ? "true" : "false",
+        //            server->clients[i].state,
+        //            server->clients[i].video_channel);
         if (server->clients[i].active && server->clients[i].state == RTSP_CLIENT_STATE_PLAYING
             && server->clients[i].video_channel == channel) {
+                IMP_LOG_DBG(TAG, "Client %d is active and playing on channel %d", i, channel);
             count++;
         }
     }
@@ -453,6 +499,7 @@ int rtsp_server_get_client_count(rtsp_server_t* server, int channel)
 /* Calculate monotonic RTP timestamp per channel with frame-based timing */
 static uint32_t calculate_monotonic_rtp_timestamp(int channel)
 {
+    /* Static variables for each channel */
     static uint32_t frame_count[4] = {0, 0, 0, 0};
     static uint32_t base_timestamp[4] = {0, 0, 0, 0};
     static bool initialized[4] = {false, false, false, false};
@@ -466,11 +513,11 @@ static uint32_t calculate_monotonic_rtp_timestamp(int channel)
         base_timestamp[channel] = (uint32_t)(rand() % 100000);
         frame_count[channel] = 0;
         initialized[channel] = true;
-        // IMP_LOG_INFO(TAG,
-        //              "Frame-based RTP timestamp initialized for channel %d: base=%u, fps=%u",
-        //              channel,
-        //              base_timestamp[channel],
-        //              actual_fps);
+        IMP_LOG_INFO(TAG,
+                     "Frame-based RTP timestamp initialized for channel %d: base=%u, fps=%u",
+                     channel,
+                     base_timestamp[channel],
+                     actual_fps);
     }
 
     frame_count[channel]++;
@@ -487,6 +534,7 @@ static int send_frame_to_client(rtsp_server_t* server,
                                 int channel)
 {
     if (!server || !client || !frame_data || frame_size == 0) {
+        IMP_LOG_ERR(TAG, "Invalid parameters for sending frame to client");
         return 0;
     }
 
@@ -1185,8 +1233,10 @@ static void* server_thread_func(void* arg)
             continue;
         }
 
+        IMP_LOG_DBG(TAG, "Checking for new connections");
         /* Check for new connections */
         if (server->listen_socket >= 0 && FD_ISSET(server->listen_socket, &read_fds)) {
+            IMP_LOG_DBG(TAG, "New connection detected");
             struct sockaddr_in client_addr;
             socklen_t client_len = sizeof(client_addr);
             int client_fd = accept(server->listen_socket,
@@ -1200,12 +1250,14 @@ static void* server_thread_func(void* arg)
                              "New connection from %s:%d",
                              inet_ntoa(client_addr.sin_addr),
                              ntohs(client_addr.sin_port));
+                IMP_LOG_INFO(TAG, "*** DEBUG: About to process new connection ***");
 
                 /* Check if we have room for a new client */
                 if (server->client_count >= server->config.max_clients) {
                     IMP_LOG_ERR(TAG, "Too many clients, rejecting connection");
                     close(client_fd);
                 } else {
+                    IMP_LOG_INFO(TAG, "Accepting connection, client count: %d", server->client_count);
                     /* Find a free client slot */
                     rtsp_client_t* client = find_free_client_slot(server);
                     if (client) {
@@ -1235,6 +1287,7 @@ static void* server_thread_func(void* arg)
 
                         server->client_count++;
                         server->total_connections++;
+                        IMP_LOG_INFO(TAG, "*** DEBUG: Client initialized, waiting for data ***");
                     } else {
                         /* This shouldn't happen, but just in case */
                         IMP_LOG_ERR(TAG, "No free client slots, rejecting connection");
@@ -1244,9 +1297,11 @@ static void* server_thread_func(void* arg)
             }
         }
 
+        IMP_LOG_DBG(TAG, "Checking for TLS connections");
         /* Check for new TLS connections */
         if (server->config.tls_enabled && server->tls_listen_socket >= 0 &&
             FD_ISSET(server->tls_listen_socket, &read_fds)) {
+                IMP_LOG_DBG(TAG, "TLS connection detected");
             struct sockaddr_in client_addr;
             socklen_t client_len = sizeof(client_addr);
             int client_fd = accept(server->tls_listen_socket,
@@ -1260,12 +1315,14 @@ static void* server_thread_func(void* arg)
                              "New TLS connection from %s:%d",
                              inet_ntoa(client_addr.sin_addr),
                              ntohs(client_addr.sin_port));
+                IMP_LOG_INFO(TAG, "*** DEBUG: About to process new TLS connection ***");
 
                 /* Check if we have room for a new client */
                 if (server->client_count >= server->config.max_clients) {
                     IMP_LOG_ERR(TAG, "Too many clients, rejecting TLS connection");
                     close(client_fd);
                 } else {
+                    IMP_LOG_INFO(TAG, "Accepting TLS connection, client count: %d", server->client_count);
                     /* Find a free client slot */
                     rtsp_client_t* client = find_free_client_slot(server);
                     if (client) {
@@ -1301,6 +1358,7 @@ static void* server_thread_func(void* arg)
                             server->client_count++;
                             server->total_connections++;
                             IMP_LOG_INFO(TAG, "TLS client connected successfully");
+                            IMP_LOG_INFO(TAG, "*** DEBUG: TLS client initialized, waiting for data ***");
                         }
                     } else {
                         /* This shouldn't happen, but just in case */
@@ -1315,6 +1373,7 @@ static void* server_thread_func(void* arg)
         for (int i = 0; i < MAX_RTSP_CLIENTS; i++) {
             if (server->clients[i].active && server->clients[i].socket_fd >= 0
                 && FD_ISSET(server->clients[i].socket_fd, &read_fds)) {
+                IMP_LOG_INFO(TAG, "*** CLIENT %d SOCKET READY FOR READING ***", i);
                 /* Handle client request */
                 if (handle_client_connection(server, i) < 0) {
                     /* Client disconnected or error */
@@ -1389,11 +1448,15 @@ static int handle_client_connection(rtsp_server_t* server, int client_index)
     char buffer[MAX_RTSP_BUFFER_SIZE];
     int bytes_received;
 
+    IMP_LOG_INFO(TAG, "handle_client_connection called for client %d", client_index);
+
     /* Receive data from client (TLS-aware) */
     bytes_received = rtsp_client_tls_read(client, buffer, sizeof(buffer) - 1);
+    IMP_LOG_INFO(TAG, "recv() returned %d bytes", bytes_received);
     if (bytes_received <= 0) {
         if (bytes_received == 0) {
             /* Client closed connection */
+            IMP_LOG_INFO(TAG, "Client closed connection (recv returned 0)");
             return -1;
         } else {
             /* Error */
@@ -1426,42 +1489,9 @@ static int handle_client_connection(rtsp_server_t* server, int client_index)
     buffer[bytes_received] = '\0';
     client->last_activity_us = get_monotonic_time_us();
 
-    // IMP_LOG_INFO(TAG, "Received RTSP request (%d bytes):\n%s", bytes_received, buffer);
+    IMP_LOG_INFO(TAG, "Received RTSP request (%d bytes):\n%s", bytes_received, buffer);
 
-    /* Get client information for authentication */
-    client_info_t client_info;
-    if (auth_get_client_info(client->socket_fd, &client_info) < 0) {
-        IMP_LOG_ERR(TAG, "Failed to get client information");
-        return -1;
-    }
-
-    /* Check authentication */
-    auth_result_t auth_result = auth_check_rtsp_request(buffer, &server->config.auth, &client_info);
-
-    if (auth_result == AUTH_RESULT_REQUIRED) {
-        /* Send 401 Unauthorized with WWW-Authenticate header */
-        IMP_LOG_INFO(TAG, "401 - Authentication required for RTSP client %s", client_info.ip_string);
-        return send_rtsp_response(client, RTSP_STATUS_UNAUTHORIZED, "Unauthorized",
-                                 "WWW-Authenticate: Basic realm=\"Thingino RTSP Server\"", NULL);
-    } else if (auth_result == AUTH_RESULT_INVALID) {
-        /* Send 401 Unauthorized for invalid credentials */
-        IMP_LOG_WARN(TAG, "401 - Invalid credentials from RTSP client %s", client_info.ip_string);
-        return send_rtsp_response(client, RTSP_STATUS_UNAUTHORIZED, "Unauthorized",
-                                 "WWW-Authenticate: Basic realm=\"Thingino RTSP Server\"", NULL);
-    } else if (auth_result == AUTH_RESULT_ERROR) {
-        /* Authentication system error */
-        IMP_LOG_ERR(TAG, "Authentication system error for RTSP client %s", client_info.ip_string);
-        return send_rtsp_response(client, RTSP_STATUS_INTERNAL_ERROR, "Internal Server Error", NULL, NULL);
-    }
-
-    /* Authentication successful or not required */
-    if (auth_is_required(&server->config.auth, &client_info)) {
-        IMP_LOG_INFO(TAG, "Authenticated RTSP request from %s", client_info.ip_string);
-    } else {
-        IMP_LOG_DBG(TAG, "Localhost bypass for RTSP client %s", client_info.ip_string);
-    }
-
-    /* Parse RTSP request */
+    /* Parse RTSP request first to get CSeq for proper response handling */
     rtsp_method_t method;
     char url[MAX_RTSP_URL_LEN];
     int cseq;
@@ -1472,6 +1502,48 @@ static int handle_client_connection(rtsp_server_t* server, int client_index)
     }
 
     client->cseq = cseq;
+
+    /* Get client information for authentication */
+    client_info_t client_info;
+    if (auth_get_client_info(client->socket_fd, &client_info) < 0) {
+        IMP_LOG_ERR(TAG, "Failed to get client information");
+        return -1;
+    }
+
+    /* Check authentication */
+    IMP_LOG_DBG(TAG, "Auth config: enabled=%s, username='%s', password='%s'",
+               server->config.auth.enabled ? "true" : "false",
+               server->config.auth.username, server->config.auth.password);
+    auth_result_t auth_result = auth_check_rtsp_request(buffer, &server->config.auth, &client_info);
+
+    if (auth_result == AUTH_RESULT_REQUIRED) {
+        /* Send 401 Unauthorized with WWW-Authenticate header */
+        IMP_LOG_INFO(TAG, "401 - Authentication required for RTSP client %s", client_info.ip_string);
+        return send_rtsp_response(client, RTSP_STATUS_UNAUTHORIZED, "Unauthorized",
+                                 "WWW-Authenticate: Basic realm=\"Thingino RTSP Server\"\r\n", NULL);
+    } else if (auth_result == AUTH_RESULT_INVALID) {
+        /* Send 401 Unauthorized for invalid credentials */
+        IMP_LOG_WARN(TAG, "401 - Invalid credentials from RTSP client %s", client_info.ip_string);
+        return send_rtsp_response(client, RTSP_STATUS_UNAUTHORIZED, "Unauthorized",
+                                 "WWW-Authenticate: Basic realm=\"Thingino RTSP Server\"\r\n", NULL);
+    } else if (auth_result == AUTH_RESULT_ERROR) {
+        /* Authentication system error */
+        IMP_LOG_ERR(TAG, "Authentication system error for RTSP client %s", client_info.ip_string);
+        return send_rtsp_response(client, RTSP_STATUS_INTERNAL_ERROR, "Internal Server Error", NULL, NULL);
+    }
+
+    /* Authentication successful or not required */
+    if (auth_is_required(&server->config.auth, &client_info)) {
+        IMP_LOG_INFO(TAG, "Authenticated RTSP request from %s", client_info.ip_string);
+    } else {
+        if (!server->config.auth.enabled) {
+            IMP_LOG_INFO(TAG, "RTSP authentication disabled in configuration");
+        } else if (server->config.auth.localhost_bypass && client_info.is_localhost) {
+            IMP_LOG_DBG(TAG, "Localhost bypass for RTSP client %s", client_info.ip_string);
+        } else {
+            IMP_LOG_DBG(TAG, "No authentication required for RTSP client %s", client_info.ip_string);
+        }
+    }
 
     /* Handle different RTSP methods */
     // IMP_LOG_INFO(
@@ -1506,7 +1578,7 @@ static int handle_client_connection(rtsp_server_t* server, int client_index)
         return handle_teardown_request(server, client);
 
     default:
-        IMP_LOG_ERR(TAG, "Unsupported RTSP method: %d", method);
+        IMP_LOG_ERR(TAG, "Unsupported RTSP method: %d from %s. Request was: %s", method, client_info.ip_string, buffer);
         return send_rtsp_response(client,
                                   RTSP_STATUS_METHOD_NOT_ALLOWED,
                                   "Method Not Allowed",
@@ -1522,6 +1594,7 @@ static int parse_rtsp_request(const char* request, rtsp_method_t* method, char* 
 
     /* Parse request line */
     if (sscanf(request, "%31s %255s", method_str, url) != 2) {
+        IMP_LOG_ERR(TAG, "Failed to parse RTSP request line: %s", request);
         return -1;
     }
 
@@ -1539,6 +1612,7 @@ static int parse_rtsp_request(const char* request, rtsp_method_t* method, char* 
     } else if (strcmp(method_str, "TEARDOWN") == 0) {
         *method = RTSP_METHOD_TEARDOWN;
     } else {
+        IMP_LOG_ERR(TAG, "Unknown RTSP method: '%s' in request: %s", method_str, request);
         *method = RTSP_METHOD_UNKNOWN;
     }
 
@@ -1546,11 +1620,15 @@ static int parse_rtsp_request(const char* request, rtsp_method_t* method, char* 
     const char* cseq_line = strstr(request, "CSeq:");
     if (cseq_line) {
         if (sscanf(cseq_line, "CSeq: %d", cseq) != 1) {
+            IMP_LOG_ERR(TAG, "Failed to parse CSeq from line: '%.50s'", cseq_line);
             *cseq = 0;
         }
     } else {
+        IMP_LOG_ERR(TAG, "No CSeq header found in RTSP request");
         *cseq = 0;
     }
+
+    IMP_LOG_DBG(TAG, "Parsed RTSP: method='%s', url='%s', cseq=%d", method_str, url, *cseq);
 
     return 0;
 }
