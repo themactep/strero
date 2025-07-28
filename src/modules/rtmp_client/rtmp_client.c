@@ -1492,16 +1492,10 @@ static int rtmp_client_connection_read_available(rtmp_client_connection_t* conn,
 {
 #if defined(RTMPS_BACKEND_OPENSSL) || defined(RTMPS_BACKEND_MBEDTLS)
     if (conn->use_tls) {
-        SSL* ssl = (SSL*)conn->ssl_context;
-        if (!ssl) return -1;
-
-        int ret = SSL_read(ssl, buffer, max_length);
+        /* Use the TLS abstraction function instead of direct SSL calls */
+        int ret = rtmp_client_tls_read_bytes(conn, buffer, max_length);
         if (ret <= 0) {
-            int ssl_error = SSL_get_error(ssl, ret);
-            if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) {
-                return 0; /* No data available */
-            }
-            return -1; /* Error */
+            return ret; /* Error or no data available */
         }
 
         /* Track bytes received for acknowledgements */
