@@ -206,6 +206,8 @@ struct rtsp_server {
     void* tls_context;                /* SSL_CTX* for OpenSSL or ssl_config for mbedTLS */
     void* tls_entropy;                /* Entropy context (mbedTLS only) */
     void* tls_ctr_drbg;               /* Random generator (mbedTLS only) */
+    void* tls_cert_context;           /* Certificate context (mbedTLS only) */
+    void* tls_key_context;            /* Private key context (mbedTLS only) */
 };
 
 /* Function declarations */

@@ -10,6 +10,15 @@ When TLS support is enabled in the buildroot configuration, the Thingino Streame
 2. **Check and generate certificates at service startup** if they're missing
 3. **Provide tools for manual certificate management**
 
+## Supported TLS Backends
+
+The certificate generation system supports both TLS backends:
+
+- **mbedTLS** (preferred): Uses `mbedtls_gen_key` and `mbedtls_cert_write` utilities
+- **OpenSSL** (fallback): Uses the `openssl` command-line tool
+
+The system automatically detects available tools and uses mbedTLS when available, falling back to OpenSSL if needed.
+
 ## Automatic Certificate Generation
 
 ### During Package Installation
@@ -38,10 +47,10 @@ The S95streamer init script automatically checks for SSL certificates when start
 
 ### Generate New Certificates
 
-Use the included certificate generation script:
+Use the included certificate generation script. The script automatically detects and uses available TLS tools:
 
 ```bash
-# Generate with defaults
+# Generate with defaults (uses mbedTLS if available, falls back to OpenSSL)
 generate-ssl-certs.sh
 
 # Generate with custom parameters
@@ -53,6 +62,11 @@ generate-ssl-certs.sh --force
 # Quiet mode (minimal output)
 generate-ssl-certs.sh --quiet
 ```
+
+**TLS Backend Detection:**
+- The script first tries to use mbedTLS tools (`mbedtls_gen_key`, `mbedtls_cert_write`)
+- If mbedTLS tools are not available, it falls back to OpenSSL (`openssl`)
+- If neither backend is available, the script will exit with an error
 
 ### Script Options
 

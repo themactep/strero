@@ -6,6 +6,7 @@
  */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +38,10 @@
 #include <mbedtls/error.h>
 #include <mbedtls/x509.h>
 #include <mbedtls/pk.h>
+#include <mbedtls/x509_crt.h>
+#include <mbedtls/x509_csr.h>
+#include <mbedtls/rsa.h>
+#include <mbedtls/bignum.h>
 #endif
 
 #define TAG "RTSP"
@@ -1245,7 +1250,46 @@ static void* server_thread_func(void* arg)
 
         if (activity < 0) {
             if (errno != EINTR) {
-                IMP_LOG_ERR(TAG, "Select error: %s", strerror(errno));
+                IMP_LOG_ERR(TAG, "Select error: %s (errno=%d)", strerror(errno), errno);
+                IMP_LOG_ERR(TAG, "Select context: max_fd=%d, listen_socket=%d, tls_listen_socket=%d",
+                           max_fd, server->listen_socket, server->tls_listen_socket);
+
+                /* Log active client sockets */
+                for (int i = 0; i < MAX_RTSP_CLIENTS; i++) {
+                    if (server->clients[i].active && server->clients[i].socket_fd >= 0) {
+                        IMP_LOG_ERR(TAG, "Active client %d: socket_fd=%d, use_tls=%s, state=%d",
+                                   i, server->clients[i].socket_fd,
+                                   server->clients[i].use_tls ? "yes" : "no",
+                                   server->clients[i].state);
+                    }
+                }
+
+                /* Check if any file descriptors are invalid */
+                if (server->listen_socket >= 0) {
+                    int flags = fcntl(server->listen_socket, F_GETFL);
+                    if (flags == -1) {
+                        IMP_LOG_ERR(TAG, "Listen socket fd=%d is invalid: %s", server->listen_socket, strerror(errno));
+                    }
+                }
+
+                if (server->config.tls_enabled && server->tls_listen_socket >= 0) {
+                    int flags = fcntl(server->tls_listen_socket, F_GETFL);
+                    if (flags == -1) {
+                        IMP_LOG_ERR(TAG, "TLS listen socket fd=%d is invalid: %s", server->tls_listen_socket, strerror(errno));
+                    }
+                }
+
+                for (int i = 0; i < MAX_RTSP_CLIENTS; i++) {
+                    if (server->clients[i].active && server->clients[i].socket_fd >= 0) {
+                        int flags = fcntl(server->clients[i].socket_fd, F_GETFL);
+                        if (flags == -1) {
+                            IMP_LOG_ERR(TAG, "Client %d socket fd=%d is invalid: %s",
+                                       i, server->clients[i].socket_fd, strerror(errno));
+                            /* Mark client as inactive to prevent further issues */
+                            server->clients[i].active = false;
+                        }
+                    }
+                }
             }
             continue;
         }
@@ -3170,37 +3214,477 @@ static int rtsp_client_tls_write(rtsp_client_t* client, const char* buffer, size
 
 #elif defined(RTSPS_BACKEND_MBEDTLS)
 
-/* mbedTLS implementation would go here - similar structure to OpenSSL */
+/* mbedTLS implementation */
+
+/* Generate a self-signed certificate at runtime if none exists */
+static int generate_self_signed_certificate(const char* cert_file, const char* key_file)
+{
+    mbedtls_pk_context key;
+    mbedtls_x509write_cert crt;
+    mbedtls_mpi serial;
+    mbedtls_entropy_context entropy;
+    mbedtls_ctr_drbg_context ctr_drbg;
+
+    const char* pers = "cert_gen";
+    int ret = 0;
+    FILE* f = NULL;
+    unsigned char output_buf[4096];
+
+    IMP_LOG_INFO(TAG, "Generating self-signed certificate for RTSPS");
+
+    /* Create certificate directories if they don't exist */
+    system("mkdir -p /etc/ssl/certs /etc/ssl/private");
+    system("chmod 755 /etc/ssl/certs");
+    system("chmod 700 /etc/ssl/private");
+
+    /* Initialize contexts */
+    mbedtls_pk_init(&key);
+    mbedtls_x509write_crt_init(&crt);
+    mbedtls_mpi_init(&serial);
+    mbedtls_entropy_init(&entropy);
+    mbedtls_ctr_drbg_init(&ctr_drbg);
+
+    /* Seed the random number generator */
+    ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
+                               (const unsigned char*)pers, strlen(pers));
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_ctr_drbg_seed failed: -0x%04x", -ret);
+        goto cleanup;
+    }
+
+    /* Generate RSA key pair */
+    IMP_LOG_INFO(TAG, "Generating RSA key pair (2048 bits)...");
+    ret = mbedtls_pk_setup(&key, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA));
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_pk_setup failed: -0x%04x", -ret);
+        goto cleanup;
+    }
+
+    ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(key), mbedtls_ctr_drbg_random, &ctr_drbg, 2048, 65537);
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_rsa_gen_key failed: -0x%04x", -ret);
+        goto cleanup;
+    }
+
+    /* Write private key to file */
+    ret = mbedtls_pk_write_key_pem(&key, output_buf, sizeof(output_buf));
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_pk_write_key_pem failed: -0x%04x", -ret);
+        goto cleanup;
+    }
+
+    f = fopen(key_file, "w");
+    if (f == NULL) {
+        IMP_LOG_ERR(TAG, "Failed to create key file: %s", key_file);
+        ret = -1;
+        goto cleanup;
+    }
+
+    if (fwrite(output_buf, 1, strlen((char*)output_buf), f) != strlen((char*)output_buf)) {
+        IMP_LOG_ERR(TAG, "Failed to write key file");
+        ret = -1;
+        goto cleanup;
+    }
+
+    fclose(f);
+    f = NULL;
+
+    /* Set certificate parameters */
+    mbedtls_x509write_crt_set_subject_key(&crt, &key);
+    mbedtls_x509write_crt_set_issuer_key(&crt, &key);
+
+    ret = mbedtls_x509write_crt_set_subject_name(&crt, "CN=camera.local,O=Thingino,C=US");
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_x509write_crt_set_subject_name failed: -0x%04x", -ret);
+        goto cleanup;
+    }
+
+    ret = mbedtls_x509write_crt_set_issuer_name(&crt, "CN=camera.local,O=Thingino,C=US");
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_x509write_crt_set_issuer_name failed: -0x%04x", -ret);
+        goto cleanup;
+    }
+
+    ret = mbedtls_mpi_lset(&serial, 1);
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_mpi_lset failed: -0x%04x", -ret);
+        goto cleanup;
+    }
+
+    ret = mbedtls_x509write_crt_set_serial(&crt, &serial);
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_x509write_crt_set_serial failed: -0x%04x", -ret);
+        goto cleanup;
+    }
+
+    ret = mbedtls_x509write_crt_set_validity(&crt, "20240101000000", "20340101000000");
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_x509write_crt_set_validity failed: -0x%04x", -ret);
+        goto cleanup;
+    }
+
+    mbedtls_x509write_crt_set_md_alg(&crt, MBEDTLS_MD_SHA256);
+
+    /* Write certificate to buffer */
+    ret = mbedtls_x509write_crt_pem(&crt, output_buf, sizeof(output_buf), mbedtls_ctr_drbg_random, &ctr_drbg);
+    if (ret < 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_x509write_crt_pem failed: -0x%04x", -ret);
+        goto cleanup;
+    }
+
+    /* Write certificate to file */
+    f = fopen(cert_file, "w");
+    if (f == NULL) {
+        IMP_LOG_ERR(TAG, "Failed to create certificate file: %s", cert_file);
+        ret = -1;
+        goto cleanup;
+    }
+
+    if (fwrite(output_buf, 1, strlen((char*)output_buf), f) != strlen((char*)output_buf)) {
+        IMP_LOG_ERR(TAG, "Failed to write certificate file");
+        ret = -1;
+        goto cleanup;
+    }
+
+    fclose(f);
+    f = NULL;
+
+    IMP_LOG_INFO(TAG, "Self-signed certificate generated successfully");
+    IMP_LOG_INFO(TAG, "Certificate: %s", cert_file);
+    IMP_LOG_INFO(TAG, "Private key: %s", key_file);
+
+    ret = 0;
+
+cleanup:
+    if (f) fclose(f);
+    mbedtls_pk_free(&key);
+    mbedtls_x509write_crt_free(&crt);
+    mbedtls_mpi_free(&serial);
+    mbedtls_entropy_free(&entropy);
+    mbedtls_ctr_drbg_free(&ctr_drbg);
+
+    return ret;
+}
 static int rtsp_server_tls_init(rtsp_server_t* server)
 {
-    IMP_LOG_ERR(TAG, "mbedTLS backend for RTSPS not yet implemented");
-    return -1;
+    if (!server || !server->config.tls_enabled) {
+        return 0; /* TLS not enabled */
+    }
+
+    IMP_LOG_INFO(TAG, "Initializing mbedTLS for RTSPS server");
+    IMP_LOG_DBG(TAG, "Certificate file: %s", server->config.cert_file);
+    IMP_LOG_DBG(TAG, "Private key file: %s", server->config.key_file);
+
+    /* Allocate mbedTLS contexts */
+    server->tls_context = malloc(sizeof(mbedtls_ssl_config));
+    server->tls_entropy = malloc(sizeof(mbedtls_entropy_context));
+    server->tls_ctr_drbg = malloc(sizeof(mbedtls_ctr_drbg_context));
+    server->tls_cert_context = malloc(sizeof(mbedtls_x509_crt));
+    server->tls_key_context = malloc(sizeof(mbedtls_pk_context));
+
+    if (!server->tls_context || !server->tls_entropy || !server->tls_ctr_drbg ||
+        !server->tls_cert_context || !server->tls_key_context) {
+        IMP_LOG_ERR(TAG, "Failed to allocate mbedTLS contexts");
+        rtsp_server_tls_cleanup(server);
+        return -1;
+    }
+
+    mbedtls_ssl_config* conf = (mbedtls_ssl_config*)server->tls_context;
+    mbedtls_entropy_context* entropy = (mbedtls_entropy_context*)server->tls_entropy;
+    mbedtls_ctr_drbg_context* ctr_drbg = (mbedtls_ctr_drbg_context*)server->tls_ctr_drbg;
+    mbedtls_x509_crt* cert = (mbedtls_x509_crt*)server->tls_cert_context;
+    mbedtls_pk_context* key = (mbedtls_pk_context*)server->tls_key_context;
+
+    /* Initialize contexts */
+    mbedtls_ssl_config_init(conf);
+    mbedtls_entropy_init(entropy);
+    mbedtls_ctr_drbg_init(ctr_drbg);
+    mbedtls_x509_crt_init(cert);
+    mbedtls_pk_init(key);
+
+    /* Seed the random number generator */
+    const char* pers = "rtsp_server";
+    int ret = mbedtls_ctr_drbg_seed(ctr_drbg, mbedtls_entropy_func, entropy,
+                                   (const unsigned char*)pers, strlen(pers));
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_ctr_drbg_seed failed: -0x%04x", -ret);
+        rtsp_server_tls_cleanup(server);
+        return -1;
+    }
+
+    /* Setup SSL configuration */
+    ret = mbedtls_ssl_config_defaults(conf, MBEDTLS_SSL_IS_SERVER,
+                                     MBEDTLS_SSL_TRANSPORT_STREAM,
+                                     MBEDTLS_SSL_PRESET_DEFAULT);
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_ssl_config_defaults failed: -0x%04x", -ret);
+        rtsp_server_tls_cleanup(server);
+        return -1;
+    }
+
+    /* Configure certificate verification */
+    if (server->config.tls_verify_client) {
+        mbedtls_ssl_conf_authmode(conf, MBEDTLS_SSL_VERIFY_REQUIRED);
+    } else {
+        mbedtls_ssl_conf_authmode(conf, MBEDTLS_SSL_VERIFY_NONE);
+    }
+
+    mbedtls_ssl_conf_rng(conf, mbedtls_ctr_drbg_random, ctr_drbg);
+
+    /* Configure supported elliptic curves for EC certificate compatibility */
+    static const mbedtls_ecp_group_id curves[] = {
+        MBEDTLS_ECP_DP_SECP256R1,    /* P-256 */
+        MBEDTLS_ECP_DP_SECP384R1,    /* P-384 */
+        MBEDTLS_ECP_DP_SECP521R1,    /* P-521 */
+        MBEDTLS_ECP_DP_NONE
+    };
+    mbedtls_ssl_conf_curves(conf, curves);
+
+    /* Configure signature algorithms to support ECDSA */
+    static const int sig_hashes[] = {
+        MBEDTLS_MD_SHA256,
+        MBEDTLS_MD_SHA384,
+        MBEDTLS_MD_SHA512,
+        MBEDTLS_MD_SHA1,
+        MBEDTLS_MD_NONE
+    };
+    mbedtls_ssl_conf_sig_hashes(conf, sig_hashes);
+
+    /* Load certificate and key if provided */
+    if (strlen(server->config.cert_file) > 0 && strlen(server->config.key_file) > 0) {
+        IMP_LOG_INFO(TAG, "Loading certificate: %s", server->config.cert_file);
+        IMP_LOG_INFO(TAG, "Loading private key: %s", server->config.key_file);
+
+        ret = mbedtls_x509_crt_parse_file(cert, server->config.cert_file);
+        if (ret != 0) {
+            IMP_LOG_WARN(TAG, "Certificate file not found or invalid (%s): -0x%04x", server->config.cert_file, -ret);
+            IMP_LOG_ERR(TAG, "Certificate loading failed - this may cause TLS handshake failures");
+
+            /* Try to generate self-signed certificate as fallback */
+            IMP_LOG_INFO(TAG, "Attempting to generate self-signed certificate...");
+            if (generate_self_signed_certificate(server->config.cert_file, server->config.key_file) == 0) {
+                /* Try loading the generated certificate */
+                ret = mbedtls_x509_crt_parse_file(cert, server->config.cert_file);
+                if (ret != 0) {
+                    IMP_LOG_WARN(TAG, "Failed to load generated certificate: -0x%04x", -ret);
+                } else {
+                    ret = mbedtls_pk_parse_keyfile(key, server->config.key_file, NULL, mbedtls_ctr_drbg_random, ctr_drbg);
+                    if (ret != 0) {
+                        IMP_LOG_WARN(TAG, "Failed to load generated private key: -0x%04x", -ret);
+                    } else {
+                        ret = mbedtls_ssl_conf_own_cert(conf, cert, key);
+                        if (ret != 0) {
+                            IMP_LOG_WARN(TAG, "Failed to configure generated certificate: -0x%04x", -ret);
+                        } else {
+                            IMP_LOG_INFO(TAG, "Generated certificate loaded successfully");
+                        }
+                    }
+                }
+            } else {
+                IMP_LOG_WARN(TAG, "Failed to generate self-signed certificate");
+            }
+        } else {
+            IMP_LOG_INFO(TAG, "Certificate file loaded successfully");
+            ret = mbedtls_pk_parse_keyfile(key, server->config.key_file, NULL, mbedtls_ctr_drbg_random, ctr_drbg);
+            if (ret != 0) {
+                IMP_LOG_WARN(TAG, "Private key file not found or invalid (%s): -0x%04x", server->config.key_file, -ret);
+                IMP_LOG_ERR(TAG, "Private key loading failed - this may cause TLS handshake failures");
+            } else {
+                ret = mbedtls_ssl_conf_own_cert(conf, cert, key);
+                if (ret != 0) {
+                    IMP_LOG_WARN(TAG, "Failed to configure certificate: -0x%04x", -ret);
+                } else {
+                    IMP_LOG_INFO(TAG, "Certificate and key configured successfully");
+                }
+            }
+        }
+    } else {
+        IMP_LOG_WARN(TAG, "No certificate/key files specified for RTSPS - TLS will work but clients may show warnings");
+    }
+
+    IMP_LOG_INFO(TAG, "mbedTLS server initialization completed");
+    return 0;
 }
 
 static void rtsp_server_tls_cleanup(rtsp_server_t* server)
 {
-    /* mbedTLS cleanup would go here */
+    if (!server) {
+        return;
+    }
+
+    if (server->tls_context) {
+        mbedtls_ssl_config_free((mbedtls_ssl_config*)server->tls_context);
+        free(server->tls_context);
+        server->tls_context = NULL;
+    }
+
+    if (server->tls_entropy) {
+        mbedtls_entropy_free((mbedtls_entropy_context*)server->tls_entropy);
+        free(server->tls_entropy);
+        server->tls_entropy = NULL;
+    }
+
+    if (server->tls_ctr_drbg) {
+        mbedtls_ctr_drbg_free((mbedtls_ctr_drbg_context*)server->tls_ctr_drbg);
+        free(server->tls_ctr_drbg);
+        server->tls_ctr_drbg = NULL;
+    }
+
+    if (server->tls_cert_context) {
+        mbedtls_x509_crt_free((mbedtls_x509_crt*)server->tls_cert_context);
+        free(server->tls_cert_context);
+        server->tls_cert_context = NULL;
+    }
+
+    if (server->tls_key_context) {
+        mbedtls_pk_free((mbedtls_pk_context*)server->tls_key_context);
+        free(server->tls_key_context);
+        server->tls_key_context = NULL;
+    }
 }
 
 static int rtsp_client_tls_accept(rtsp_server_t* server, rtsp_client_t* client, int client_fd)
 {
-    IMP_LOG_ERR(TAG, "mbedTLS backend for RTSPS not yet implemented");
-    return -1;
+    if (!server || !client || client_fd < 0) {
+        IMP_LOG_ERR(TAG, "Invalid parameters for TLS client accept");
+        return -1;
+    }
+
+    if (!server->tls_context) {
+        IMP_LOG_ERR(TAG, "Server TLS not initialized");
+        return -1;
+    }
+
+    IMP_LOG_DBG(TAG, "TLS accept: server=%p, client=%p, client_fd=%d", server, client, client_fd);
+
+    /* Allocate client SSL context */
+    client->ssl_context = malloc(sizeof(mbedtls_ssl_context));
+    if (!client->ssl_context) {
+        IMP_LOG_ERR(TAG, "Failed to allocate client SSL context");
+        return -1;
+    }
+
+    IMP_LOG_DBG(TAG, "TLS accept: allocated client SSL context at %p", client->ssl_context);
+
+    mbedtls_ssl_context* ssl = (mbedtls_ssl_context*)client->ssl_context;
+    mbedtls_ssl_config* conf = (mbedtls_ssl_config*)server->tls_context;
+
+    IMP_LOG_DBG(TAG, "TLS accept: ssl=%p, conf=%p", ssl, conf);
+
+    /* Initialize client SSL context */
+    IMP_LOG_DBG(TAG, "TLS accept: calling mbedtls_ssl_init");
+    mbedtls_ssl_init(ssl);
+    IMP_LOG_DBG(TAG, "TLS accept: mbedtls_ssl_init completed");
+
+    /* Setup SSL context with server configuration */
+    IMP_LOG_DBG(TAG, "TLS accept: calling mbedtls_ssl_setup");
+    int ret = mbedtls_ssl_setup(ssl, conf);
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "mbedtls_ssl_setup failed: -0x%04x", -ret);
+        mbedtls_ssl_free(ssl);
+        free(client->ssl_context);
+        client->ssl_context = NULL;
+        return -1;
+    }
+    IMP_LOG_DBG(TAG, "TLS accept: mbedtls_ssl_setup completed");
+
+    /* Set BIO callbacks */
+    IMP_LOG_DBG(TAG, "TLS accept: calling mbedtls_ssl_set_bio with client_fd=%d", client_fd);
+    mbedtls_ssl_set_bio(ssl, &client_fd, mbedtls_net_send, mbedtls_net_recv, NULL);
+    IMP_LOG_DBG(TAG, "TLS accept: mbedtls_ssl_set_bio completed");
+
+    /* Perform TLS handshake */
+    IMP_LOG_DBG(TAG, "TLS accept: starting TLS handshake");
+    while ((ret = mbedtls_ssl_handshake(ssl)) != 0) {
+        IMP_LOG_DBG(TAG, "TLS accept: handshake returned %d (-0x%04x)", ret, -ret);
+        if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
+            char error_buf[100];
+            mbedtls_strerror(ret, error_buf, sizeof(error_buf));
+            IMP_LOG_ERR(TAG, "mbedTLS handshake failed: -0x%04x (%s) for client fd=%d", -ret, error_buf, client_fd);
+
+            /* Log additional context */
+            IMP_LOG_ERR(TAG, "TLS handshake context: client_fd=%d, ssl_context=%p", client_fd, ssl);
+
+            mbedtls_ssl_free(ssl);
+            free(client->ssl_context);
+            client->ssl_context = NULL;
+            return -1;
+        }
+    }
+
+    client->use_tls = true;
+    IMP_LOG_INFO(TAG, "TLS handshake completed for RTSPS client");
+    return 0;
 }
 
 static void rtsp_client_tls_cleanup(rtsp_client_t* client)
 {
-    /* mbedTLS cleanup would go here */
+    if (!client || !client->ssl_context) {
+        return;
+    }
+
+    mbedtls_ssl_free((mbedtls_ssl_context*)client->ssl_context);
+    free(client->ssl_context);
+    client->ssl_context = NULL;
+    client->use_tls = false;
 }
 
 static int rtsp_client_tls_read(rtsp_client_t* client, char* buffer, size_t length)
 {
-    return recv(client->socket_fd, buffer, length, 0);
+    if (!client || !buffer || length == 0) {
+        return -1;
+    }
+
+    if (!client->use_tls || !client->ssl_context) {
+        return recv(client->socket_fd, buffer, length, 0);
+    }
+
+    mbedtls_ssl_context* ssl = (mbedtls_ssl_context*)client->ssl_context;
+    int ret = mbedtls_ssl_read(ssl, (unsigned char*)buffer, length);
+
+    if (ret < 0) {
+        if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
+            errno = EAGAIN;
+            return -1;
+        }
+        if (ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
+            IMP_LOG_DBG(TAG, "TLS connection closed by client");
+            return 0;
+        }
+        IMP_LOG_ERR(TAG, "TLS read failed: -0x%04x", -ret);
+        return -1;
+    }
+
+    return ret;
 }
 
 static int rtsp_client_tls_write(rtsp_client_t* client, const char* buffer, size_t length)
 {
-    return send(client->socket_fd, buffer, length, 0);
+    if (!client || !buffer || length == 0) {
+        return -1;
+    }
+
+    if (!client->use_tls || !client->ssl_context) {
+        return send(client->socket_fd, buffer, length, 0);
+    }
+
+    mbedtls_ssl_context* ssl = (mbedtls_ssl_context*)client->ssl_context;
+    size_t bytes_written = 0;
+
+    while (bytes_written < length) {
+        int ret = mbedtls_ssl_write(ssl, (const unsigned char*)(buffer + bytes_written),
+                                   length - bytes_written);
+        if (ret < 0) {
+            if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
+                continue;
+            }
+            IMP_LOG_ERR(TAG, "TLS write failed: -0x%04x", -ret);
+            return -1;
+        }
+        bytes_written += ret;
+    }
+
+    return bytes_written;
 }
 
 #else
