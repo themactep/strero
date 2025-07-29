@@ -124,9 +124,12 @@ int frame_manager_init(void)
         return -1;
     }
 
-    /* Initialize state */
+    /* Initialize state - only reset if not already initialized */
     memset(&g_frame_manager.stats, 0, sizeof(g_frame_manager.stats));
-    g_frame_manager.consumer_count = 0;
+    if (g_frame_manager.consumer_count == 0) {
+        /* Only reset consumer_count if no consumers are registered */
+        g_frame_manager.consumer_count = 0;
+    }
     g_frame_manager.running = false;
     g_frame_manager.initialized = true;
 
