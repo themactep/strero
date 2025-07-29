@@ -2,7 +2,7 @@
 
 THINGINO_DIR=/home/paul/dev/thingino-dev
 OVERRIDES_DIR=/home/paul/dev/thingino-streamer
-OUTPUT_DIR=/home/paul/output-wyze_cam3_t31x_gc2053_rtl8189ftv
+OUTPUT_DIR=/home/paul/output-dev/wyze_cam3_t31x_gc2053_rtl8189ftv
 SHARE_DIR=/home/paul/nfs
 
 BUILDROOT_PACKAGE_DIR=$THINGINO_DIR/package/thingino-streamer
