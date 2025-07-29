@@ -1921,12 +1921,22 @@ static int handle_setup_request(rtsp_server_t* server,
         return send_rtsp_response(client, RTSP_STATUS_NOT_FOUND, "Not Found", NULL, NULL);
     }
 
-    /* Remove /trackID=X suffix if present and extract track ID */
+    /* Remove track suffix if present and extract track ID
+     * Standard RTSP/ONVIF convention: track1=video, track2=audio */
     int track_id = 0; /* Default to video track */
-    char* track_suffix = strstr(stream_name, "/trackID=");
-    if (track_suffix) {
-        track_id = atoi(track_suffix + 9); /* Extract track ID number */
-        *track_suffix = '\0'; /* Terminate string at the /trackID= part */
+    char* track_suffix = NULL;
+
+    /* Handle standard track1/track2 naming (ONVIF/industry standard) */
+    if ((track_suffix = strstr(stream_name, "/track1")) != NULL) {
+        track_id = 1; /* Video track */
+        *track_suffix = '\0';
+    } else if ((track_suffix = strstr(stream_name, "/track2")) != NULL) {
+        track_id = 2; /* Audio track */
+        *track_suffix = '\0';
+    } else if ((track_suffix = strstr(stream_name, "/trackID=")) != NULL) {
+        /* Legacy trackID=X format for backward compatibility */
+        track_id = atoi(track_suffix + 9);
+        *track_suffix = '\0';
     }
 
     // IMP_LOG_INFO(TAG, "SETUP: stream_name='%s', track_id=%d", stream_name, track_id);
@@ -1953,13 +1963,14 @@ static int handle_setup_request(rtsp_server_t* server,
         return send_rtsp_response(client, RTSP_STATUS_NOT_FOUND, "Not Found", NULL, NULL);
     }
 
-    /* Store stream info in client - only for video track (trackID=0) */
-    if (track_id == 0) {
+    /* Store stream info in client - for video tracks (track1 or trackID=0) */
+    if (track_id == 1 || track_id == 0) {  /* track1=video or legacy trackID=0 */
         client->video_channel = server->streams[stream_index].channel;
         client->codec = server->streams[stream_index].codec;
-    //     IMP_LOG_INFO(TAG, "Video track setup: video_channel=%d, codec=%d", client->video_channel, client->codec);
-    // } else {
-    //     IMP_LOG_INFO(TAG, "Audio track setup: track_id=%d (not setting video_channel)", track_id);
+        IMP_LOG_ERR(TAG, "SETUP: stream='%s' -> stream_index=%d, video_channel=%d, codec=%d",
+                   stream_name, stream_index, client->video_channel, client->codec);
+    } else {
+        IMP_LOG_ERR(TAG, "SETUP: Audio track setup: track_id=%d (not setting video_channel)", track_id);
     }
 
     /* Parse transport header */
@@ -2220,6 +2231,9 @@ static int generate_sdp(rtsp_server_t* server,
 
     video_stream_config_t* stream = &server->streams[stream_index];
 
+    IMP_LOG_INFO(TAG, "SDP: Generating for stream '%s' (channel %d): %dx%d",
+                stream_name, stream->channel, stream->width, stream->height);
+
     /* Generate a random session ID for the SDP */
     char session_id[16];
     snprintf(session_id, sizeof(session_id), "%ld", (long) time(NULL));
@@ -2298,7 +2312,7 @@ static int generate_sdp(rtsp_server_t* server,
             RTP_PAYLOAD_TYPE_H265);
     }
 
-    /* Control attribute */
+    /* Control attribute - use standard track1 for video */
     len += snprintf(sdp_buffer + len, buffer_size - len, "a=control:track1\r\n");
 
     /* Additional info */

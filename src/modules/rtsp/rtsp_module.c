@@ -316,6 +316,10 @@ static int setup_rtsp_server(void)
             stream_config.fps = 30; /* TODO: Get from config */
             stream_config.bitrate = g_config->streams[i].bitrate;
 
+            IMP_LOG_ERR(TAG, "RTSP: Configuring stream %d (%s): %dx%d, bitrate=%d",
+                        i, g_config->streams[i].rtsp_endpoint,
+                        stream_config.width, stream_config.height, stream_config.bitrate);
+
             /* Use SDK approach to determine codec from channel configuration */
             extern struct chn_conf chn[FS_CHN_NUM];
             if (i < FS_CHN_NUM) {
