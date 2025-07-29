@@ -382,8 +382,22 @@ static void distribute_frame_to_consumers(const frame_info_t* frame)
 
     pthread_mutex_lock(&g_frame_manager.consumers_mutex);
 
+    /* Debug: Log frame distribution details */
+    static int debug_count = 0;
+    debug_count++;
+    if (debug_count <= 5 || debug_count % 1000 == 0) {
+        IMP_LOG_INFO(TAG, "Distributing frame: channel=%d, channel_bit=0x%02x, consumers=%d",
+                     frame->channel, channel_bit, g_frame_manager.consumer_count);
+    }
+
     for (int i = 0; i < g_frame_manager.consumer_count; i++) {
         frame_consumer_t* consumer = &g_frame_manager.consumers[i];
+
+        if (debug_count <= 5) {
+            IMP_LOG_INFO(TAG, "Consumer %d: name='%s', active=%d, channel_mask=0x%02x, match=%d",
+                         i, consumer->name, consumer->active, consumer->channel_mask,
+                         (consumer->active && (consumer->channel_mask & channel_bit)) ? 1 : 0);
+        }
 
         /* Check if consumer is active and wants this channel */
         if (consumer->active && (consumer->channel_mask & channel_bit)) {
