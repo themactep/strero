@@ -2195,6 +2195,16 @@ static int generate_sdp(rtsp_server_t* server,
                         char* sdp_buffer,
                         size_t buffer_size)
 {
+    /* TODO: SDP Generation Enhancements
+     * 1. Extract actual SPS/PPS from H.264/H.265 encoder for sprop-parameter-sets
+     * 2. Add audio media description support (OPUS, AAC, etc.)
+     * 3. Dynamic profile-level-id extraction from encoder settings
+     * 4. Support for multiple video tracks (main + sub streams)
+     * 5. Real-time bandwidth calculation from encoder bitrate
+     * 6. Add more standard SDP attributes for better client compatibility
+     * 7. Support for encryption parameters if SRTP is implemented
+     */
+
     /* Find stream by name */
     int stream_index = -1;
     for (int i = 0; i < server->stream_count; i++) {
@@ -2229,27 +2239,46 @@ static int generate_sdp(rtsp_server_t* server,
                     g_config->general.server_ip);
 
     /* Session name */
-    len += snprintf(sdp_buffer + len, buffer_size - len, "s=%s\r\n", stream->stream_name);
+    len += snprintf(sdp_buffer + len, buffer_size - len, "s=thingino %s\r\n", stream->stream_name);
 
-    /* Connection info - use actual server IP */
-    len += snprintf(sdp_buffer + len, buffer_size - len, "c=IN IP4 %s\r\n", g_config->general.server_ip);
+    /* Session information */
+    len += snprintf(sdp_buffer + len, buffer_size - len, "i=%s\r\n", stream->stream_name);
 
     /* Time */
     len += snprintf(sdp_buffer + len, buffer_size - len, "t=0 0\r\n");
 
-    /* Global control */
+    /* Session attributes */
+    len += snprintf(sdp_buffer + len, buffer_size - len, "a=tool:Thingino Streamer v1.0\r\n");
+    len += snprintf(sdp_buffer + len, buffer_size - len, "a=type:broadcast\r\n");
     len += snprintf(sdp_buffer + len, buffer_size - len, "a=control:*\r\n");
+    len += snprintf(sdp_buffer + len, buffer_size - len, "a=range:npt=now-\r\n");
+    len += snprintf(sdp_buffer + len, buffer_size - len, "a=x-qt-text-nam:thingino %s\r\n", stream->stream_name);
+    len += snprintf(sdp_buffer + len, buffer_size - len, "a=x-qt-text-inf:%s\r\n", stream->stream_name);
 
     /* Media description - use proper RTP port instead of 0 */
     len += snprintf(sdp_buffer + len,
                     buffer_size - len,
-                    "m=video 49152 RTP/AVP %d\r\n",
+                    "m=video 0 RTP/AVP %d\r\n",
                     stream->codec == VIDEO_CODEC_H265 ? RTP_PAYLOAD_TYPE_H265
                                                       : RTP_PAYLOAD_TYPE_H264);
 
+    /* Connection info for video */
+    len += snprintf(sdp_buffer + len, buffer_size - len, "c=IN IP4 0.0.0.0\r\n");
+
+    /* TODO: Replace rough bandwidth estimation with actual encoder bitrate
+     * Current calculation is based on resolution/fps which is inaccurate
+     * Should get target bitrate from encoder configuration */
+    int video_bandwidth = (stream->width * stream->height * stream->fps) / 1000; // Rough estimate
+    if (video_bandwidth < 1000) video_bandwidth = 1000;
+    if (video_bandwidth > 10000) video_bandwidth = 10000;
+    len += snprintf(sdp_buffer + len, buffer_size - len, "b=AS:%d\r\n", video_bandwidth);
+
     /* Media attributes */
     if (stream->codec == VIDEO_CODEC_H264) {
-        /* Use minimal SDP parameters to avoid mismatch with actual stream */
+        /* TODO: Extract actual SPS/PPS NAL units from encoder and include in sprop-parameter-sets
+         * Current hardcoded profile-level-id should be replaced with actual encoder settings
+         * Example: sprop-parameter-sets=J2QAM60AzoB4AiflmoCAgPgAAAMACAAAAwGRgIACq5AACALL//gU,KO48sA==
+         * This requires parsing the first I-frame or getting SPS/PPS from encoder configuration */
         len += snprintf(
             sdp_buffer + len,
             buffer_size - len,
@@ -2258,7 +2287,8 @@ static int generate_sdp(rtsp_server_t* server,
             RTP_PAYLOAD_TYPE_H264,
             RTP_PAYLOAD_TYPE_H264);
     } else {
-        /* FIXME: Hardcoded H.265 profile parameters may mismatch actual stream - should extract from VPS/SPS/PPS */
+        /* TODO: Extract actual VPS/SPS/PPS from H.265 encoder instead of hardcoded values
+         * Should get profile-space, profile-id, tier-flag, level-id from actual encoder settings */
         len += snprintf(
             sdp_buffer + len,
             buffer_size - len,
@@ -2269,7 +2299,7 @@ static int generate_sdp(rtsp_server_t* server,
     }
 
     /* Control attribute */
-    len += snprintf(sdp_buffer + len, buffer_size - len, "a=control:trackID=0\r\n");
+    len += snprintf(sdp_buffer + len, buffer_size - len, "a=control:track1\r\n");
 
     /* Additional info */
     if (stream->stream_info && strlen(stream->stream_info) > 0) {
@@ -2285,6 +2315,21 @@ static int generate_sdp(rtsp_server_t* server,
 
     /* Framerate */
     len += snprintf(sdp_buffer + len, buffer_size - len, "a=framerate:%d\r\n", stream->fps);
+
+    /* TODO: Add audio media description if audio is available
+     * Should check if audio encoder is enabled and add:
+     * m=audio 0 RTP/AVP 97
+     * c=IN IP4 0.0.0.0
+     * b=AS:40
+     * a=rtpmap:97 OPUS/48000/2  (or other audio codec)
+     * a=control:track2
+     * This requires integration with audio encoder module */
+
+    /* TODO: Add dynamic bandwidth calculation based on actual encoder bitrate settings
+     * Current bandwidth estimation is rough - should get actual target bitrate from encoder */
+
+    /* TODO: Add support for multiple video tracks (e.g., main + sub stream)
+     * Each track should have its own media description with different payload types */
 
     return 0;
 }
