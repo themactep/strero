@@ -32,8 +32,8 @@
         "format": "%H:%M:%S",
         "font": "/usr/share/fonts/default.ttf",
         "size": 24,
-        "color": "#FFFFFF",
-        "background": "#00000080",
+        "color": "#FFFFFFFF",
+        "background": "#00000000",
         "position": "5,5"
       },
       "logo": {
