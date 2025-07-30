@@ -378,12 +378,16 @@ int main(int argc, char *argv[])
     }
     IMP_LOG_DBG(TAG, "Configuration validated and adjusted based on sensor capabilities");
 
+    /* Note: Memory optimizations will be applied AFTER JSON config to avoid being overridden */
+
 #ifdef ENABLE_OSD
-    ret = IMP_OSD_SetPoolSize(4096 * 1024); // Set pool size to 4MB to prevent pool exhaustion
+    /* Use smaller OSD pool for low-memory devices */
+    int osd_pool_size = is_low_memory_device() ? 512 * 1024 : 4096 * 1024;
+    ret = IMP_OSD_SetPoolSize(osd_pool_size);
     if (ret < 0) {
         IMP_LOG_WARN(TAG, "IMP_OSD_SetPoolSize failed, continuing with default");
     } else {
-        IMP_LOG_INFO(TAG, "OSD memory pool set to 4MB for memory optimization");
+        IMP_LOG_INFO(TAG, "OSD memory pool set to %dKB for memory optimization", osd_pool_size / 1024);
     }
 #endif
 
@@ -418,6 +422,9 @@ int main(int argc, char *argv[])
         return -1;
     }
     IMP_LOG_INFO(TAG, "Sensor enabled successfully");
+
+    /* Set up memory pools for low-memory devices BEFORE system init */
+    setup_memory_pools_for_low_memory();
 
     /* Initialize system after ISP setup */
     IMP_LOG_INFO(TAG, "Calling IMP_System_Init()...");
@@ -501,6 +508,9 @@ int main(int argc, char *argv[])
     }
     IMP_LOG_DBG(TAG, "Configuration applied to channels successfully");
 
+    /* Apply memory optimizations AFTER JSON config to ensure they take effect */
+    apply_low_memory_optimizations();
+
     for (i = 0; i < FS_CHN_NUM; i++) {
         if (chn[i].enable) {
             ret = IMP_FrameSource_CreateChn(chn[i].index, &chn[i].fs_chn_attr);
@@ -519,8 +529,14 @@ int main(int argc, char *argv[])
 
             /* Set FIFO buffer depth for proper frame buffering - CRITICAL for preventing buffer exhaustion */
             IMPFSChnFifoAttr fifo_attr;
-            fifo_attr.maxdepth = buffer_depth;           /* Use configured buffer depth */
-            fifo_attr.type = FIFO_CACHE_PRIORITY;        /* Use cache priority for all channels - safer approach */
+            /* For 64MB devices, FIFO depth MUST be 0 to avoid buffer multiplication */
+            if (is_low_memory_device()) {
+                fifo_attr.maxdepth = 0;  /* MUST be 0 for 64MB devices - any other value causes num_buffers:2 error */
+                IMP_LOG_WARN(TAG, "64MB device: Setting FIFO depth to 0");
+            } else {
+                fifo_attr.maxdepth = buffer_depth; /* Use configured buffer depth */
+            }
+            fifo_attr.type = FIFO_CACHE_PRIORITY;  /* Use cache priority for all channels - safer approach */
             IMP_LOG_DBG(TAG, "Using buffer depth %d for channel %d", buffer_depth, chn[i].index);
             ret = IMP_FrameSource_SetChnFifoAttr(chn[i].index, &fifo_attr);
             if (ret < 0) {
@@ -566,21 +582,29 @@ int main(int argc, char *argv[])
             imp_chn_attr_tmp = &chn[i].fs_chn_attr;
             memset(&channel_attr, 0, sizeof(IMPEncoderChnAttr));
 
-            int stream_buffer_count = 6;
+            /* Optimize stream buffer count for 64MB performance vs memory balance */
+            int stream_buffer_count = is_low_memory_device() ? 2 : 6;
             ret = IMP_Encoder_SetMaxStreamCnt(chnNum, stream_buffer_count);
             if (ret < 0) {
                 IMP_LOG_ERR(TAG, "IMP_Encoder_SetMaxStreamCnt(%d, %d) failed: %d",
                            chnNum, stream_buffer_count, ret);
                 return -1;
             }
+            IMP_LOG_INFO(TAG, "Channel %d: Set %d stream buffers for %s device",
+                         chnNum, stream_buffer_count,
+                         is_low_memory_device() ? "low-memory" : "normal");
 
-            uint32_t stream_buf_size = 512 * 1024; /* 512KB per buffer */
+            /* Reduce stream buffer size for low-memory devices */
+            uint32_t stream_buf_size = is_low_memory_device() ? 256 * 1024 : 512 * 1024;
             ret = IMP_Encoder_SetStreamBufSize(chnNum, stream_buf_size);
             if (ret < 0) {
                 IMP_LOG_ERR(TAG, "IMP_Encoder_SetStreamBufSize(%d, %u) failed: %d",
                            chnNum, stream_buf_size, ret);
                 return -1;
             }
+            IMP_LOG_INFO(TAG, "Channel %d: Set %dKB stream buffer size for %s device",
+                         chnNum, stream_buf_size / 1024,
+                         is_low_memory_device() ? "low-memory" : "normal");
 
             IMP_LOG_INFO(TAG, "Channel %d: Set %d stream buffers, %u bytes each", chnNum, stream_buffer_count, stream_buf_size);
 
@@ -840,9 +864,39 @@ int main(int argc, char *argv[])
     for (int i = 0; i < FS_CHN_NUM; i++) {
         if (chn[i].enable) {
             IMP_LOG_INFO(TAG, "Enabling FrameSource channel %d", i);
+            IMP_LOG_INFO(TAG, "Channel %d: nrVBs=%d, resolution=%dx%d",
+                         i, chn[i].fs_chn_attr.nrVBs,
+                         chn[i].fs_chn_attr.picWidth, chn[i].fs_chn_attr.picHeight);
+
+            /* Get and log FIFO attributes to verify buffer settings */
+            IMPFSChnFifoAttr current_fifo_attr;
+            ret = IMP_FrameSource_GetChnFifoAttr(i, &current_fifo_attr);
+            if (ret == 0) {
+                IMP_LOG_INFO(TAG, "Channel %d: FIFO maxdepth=%d, type=%d",
+                             i, current_fifo_attr.maxdepth, current_fifo_attr.type);
+            } else {
+                IMP_LOG_WARN(TAG, "Channel %d: Could not get FIFO attributes", i);
+            }
+
+            /* Calculate expected memory usage */
+            int frame_size = chn[i].fs_chn_attr.picWidth * chn[i].fs_chn_attr.picHeight * 3 / 2;
+            int expected_vbm = frame_size * chn[i].fs_chn_attr.nrVBs; /* VBM should use nrVBs * frame_size */
+            IMP_LOG_INFO(TAG, "Channel %d: Expected VBM allocation ~%d bytes (%.1fMB) for %d buffers",
+                         i, expected_vbm, expected_vbm / (1024.0 * 1024.0), chn[i].fs_chn_attr.nrVBs);
+
             ret = IMP_FrameSource_EnableChn(i);
             if (ret < 0) {
                 IMP_LOG_ERR(TAG, "IMP_FrameSource_EnableChn(%d) error: %d", i, ret);
+                IMP_LOG_ERR(TAG, "Channel %d details: %dx%d, nrVBs=%d, pixFmt=%d",
+                           i, chn[i].fs_chn_attr.picWidth, chn[i].fs_chn_attr.picHeight,
+                           chn[i].fs_chn_attr.nrVBs, chn[i].fs_chn_attr.pixFmt);
+
+                /* Try to get more detailed error information */
+                IMP_LOG_ERR(TAG, "Possible causes:");
+                IMP_LOG_ERR(TAG, "  1. Memory allocation failure (check dmesg)");
+                IMP_LOG_ERR(TAG, "  2. Invalid channel configuration");
+                IMP_LOG_ERR(TAG, "  3. Hardware resource conflict");
+                IMP_LOG_ERR(TAG, "  4. ISP/Sensor not properly initialized");
                 return -1;
             }
             IMP_LOG_INFO(TAG, "FrameSource channel %d enabled successfully", i);
@@ -1067,6 +1121,8 @@ exit_cleanup:
 
     /* Step.e System exit */
     IMP_System_Exit();
+
+    /* No explicit memory pools to clean up for low-memory devices */
 
     ret = IMP_ISP_DisableSensor();
     if (ret < 0) {

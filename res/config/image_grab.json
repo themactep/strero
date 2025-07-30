@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "timeout_ms": 5000,
   "default_jpeg_quality": 85
 }

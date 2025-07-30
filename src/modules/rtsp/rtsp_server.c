@@ -200,8 +200,11 @@ void rtsp_server_destroy(rtsp_server_t* server)
         IMP_LOG_DBG(TAG, "Cleaning up GOP cache for channel %d", i);
         pthread_mutex_destroy(&server->gop_cache[i].mutex);
         for (int j = 0; j < MAX_GOP_FRAMES; j++) {
-            IMP_LOG_DBG(TAG, "Freeing frame buffer %d for channel %d", j, i);
-            free(server->gop_cache[i].frames[j].data);
+            if (server->gop_cache[i].frames[j].data) {
+                IMP_LOG_DBG(TAG, "Freeing frame buffer %d for channel %d", j, i);
+                free(server->gop_cache[i].frames[j].data);
+                server->gop_cache[i].frames[j].data = NULL;
+            }
         }
     }
 

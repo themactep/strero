@@ -271,6 +271,14 @@ static void* frame_processing_thread(void* arg)
     uint32_t configured_fps = g_config->sensor.fps > 0 ? g_config->sensor.fps : 30;
     int polling_timeout_ms = 1000 / configured_fps; /* Frame interval in milliseconds */
 
+    /* For low-memory devices, use more aggressive polling to compensate for lack of buffering */
+    extern int is_low_memory_device(void);
+    if (is_low_memory_device()) {
+        polling_timeout_ms = polling_timeout_ms / 2; /* Half the timeout for more frequent polling */
+        IMP_LOG_INFO(TAG, "64MB SoC: Using aggressive polling timeout: %dms (was %dms)",
+                     polling_timeout_ms, 1000 / configured_fps);
+    }
+
     /* Debug: Log consumer counts */
     for (int channel = 0; channel < 4; channel++) {
         int consumer_count = frame_manager_get_consumer_count(channel);
@@ -322,6 +330,12 @@ static int process_frame_from_encoder(int channel)
     /* Calculate polling timeout based on frame rate */
     uint32_t configured_fps = g_config->sensor.fps > 0 ? g_config->sensor.fps : 30;
     int polling_timeout_ms = 1000 / configured_fps; /* Frame interval in milliseconds */
+
+    /* For low-memory devices, use more aggressive polling to compensate for lack of buffering */
+    extern int is_low_memory_device(void);
+    if (is_low_memory_device()) {
+        polling_timeout_ms = polling_timeout_ms / 2; /* Half the timeout for more frequent polling */
+    }
 
     /* Poll for frame from encoder */
     int ret = IMP_Encoder_PollingStream(channel, polling_timeout_ms);

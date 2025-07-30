@@ -195,6 +195,110 @@ struct chn_conf chn[FS_CHN_NUM] = {
 };
 
 IMPSensorInfo sensor_info;
+
+/* Low Memory Devices Optimization Functions */
+static int g_low_memory_device_cached = -1; /* -1 = not checked, 0 = false, 1 = true */
+
+int is_low_memory_device(void)
+{
+    /* Return cached result if already determined */
+    if (g_low_memory_device_cached != -1) {
+        return g_low_memory_device_cached;
+    }
+
+    FILE *fp;
+    char line[256];
+    unsigned long total_mem_kb = 0;
+
+    /* Check for manual override via environment variable */
+    char *force_low_mem = getenv("THINGINO_FORCE_LOW_MEMORY");
+    if (force_low_mem && (strcmp(force_low_mem, "1") == 0 || strcmp(force_low_mem, "true") == 0)) {
+        IMP_LOG_INFO(TAG, "Low-memory mode forced via THINGINO_FORCE_LOW_MEMORY");
+        g_low_memory_device_cached = 1;
+        return 1;
+    }
+
+    /* Check /proc/meminfo for total memory */
+    fp = fopen("/proc/meminfo", "r");
+    if (fp) {
+        while (fgets(line, sizeof(line), fp)) {
+            if (sscanf(line, "MemTotal: %lu kB", &total_mem_kb) == 1) {
+                break;
+            }
+        }
+        fclose(fp);
+    }
+
+    /* Consider devices with less than 96MB as low-memory */
+    if (total_mem_kb > 0) {
+        IMP_LOG_INFO(TAG, "System memory: %lu MB", total_mem_kb / 1024);
+        if (total_mem_kb < 96 * 1024) {
+            IMP_LOG_INFO(TAG, "Detected low-memory device: %lu MB total RAM", total_mem_kb / 1024);
+            g_low_memory_device_cached = 1;
+            return 1;
+        }
+    } else {
+        IMP_LOG_WARN(TAG, "Could not read system memory from /proc/meminfo");
+    }
+
+    /* Check for Ingenic Xburst with low memory as fallback */
+    fp = fopen("/proc/cpuinfo", "r");
+    if (fp) {
+        if (total_mem_kb > 0 && total_mem_kb <= 80 * 1024) {
+            IMP_LOG_INFO(TAG, "Detected Ingenic device with ≤80MB RAM");
+            g_low_memory_device_cached = 1;
+            return 1;
+        }
+    }
+
+    /* Cache the result as "not low-memory" */
+    g_low_memory_device_cached = 0;
+    return 0;
+}
+
+int apply_low_memory_optimizations(void)
+{
+    if (!is_low_memory_device()) {
+        return 0;
+    }
+
+    IMP_LOG_WARN(TAG, "Applying memory optimizations for low-memory device");
+
+    /* No resolution changes needed - RTSP module handles output resolution */
+
+    /* Set buffer counts to absolute minimum for 64MB devices */
+    chn[0].fs_chn_attr.nrVBs = 1;  /* Back to 1 - the 2x multiplier is elsewhere */
+    chn[1].fs_chn_attr.nrVBs = 1;  /* Back to 1 - the 2x multiplier is elsewhere */
+
+    /* Channels 2-3 are not used in current configuration */
+    chn[2].enable = 0;
+    chn[3].enable = 0;
+
+    IMP_LOG_INFO(TAG, "Low-memory optimizations applied:");
+    IMP_LOG_INFO(TAG, "  - Buffer optimization: nrVBs=1, FIFO depth=0");
+    IMP_LOG_INFO(TAG, "  - Channel enabling: Based on configuration");
+    IMP_LOG_INFO(TAG, "  - Channels 2-3: Not used in current setup");
+    IMP_LOG_INFO(TAG, "  - Output resolution: Handled by RTSP module");
+    IMP_LOG_INFO(TAG, "SUCCESS: optimized with configuration-driven channel management");
+
+    return 1;
+}
+
+int setup_memory_pools_for_low_memory(void)
+{
+    if (!is_low_memory_device()) {
+        return 0;
+    }
+
+    IMP_LOG_INFO(TAG, "Skipping explicit memory pools - relying on reduced buffer counts");
+    IMP_LOG_INFO(TAG, "Low-memory optimizations rely on:");
+    IMP_LOG_INFO(TAG, "  - Reduced nrVBs (1 buffer per channel)");
+    IMP_LOG_INFO(TAG, "  - Smaller OSD pool (512KB)");
+    IMP_LOG_INFO(TAG, "  - Disabled unused channels");
+    IMP_LOG_INFO(TAG, "  - Let IMP system manage RMEM automatically");
+
+    return 1;
+}
 sensor_info_t g_sensor_info;
 
 static void* get_frame(void* args)

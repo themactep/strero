@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "monitor_stream": 1,
   "sensitivity": 3,
   "skip_frame_count": 5,

@@ -93,6 +93,11 @@ void imp_log_fun(int level, int option, int output, const char* tag,
 #define GRAFANA_URL_MAX_LEN 256
 #define GRAFANA_METRICS_INTERVAL 5000 /* 5 seconds in milliseconds */
 
+/* Memory management for low-memory devices */
+int is_low_memory_device(void);
+int apply_low_memory_optimizations(void);
+int setup_memory_pools_for_low_memory(void);
+
 /* Metrics structure for each channel */
 typedef struct {
     int channel;

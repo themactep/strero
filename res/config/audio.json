@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "force_stereo": false,
   "input_agc_compression_gain_db": 0,
   "input_agc_enabled": false,
