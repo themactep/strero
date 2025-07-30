@@ -79,6 +79,14 @@ int image_grab_module_start(void)
         return 0;
     }
 
+#ifdef ENABLE_HTTP
+    /* Register HTTP routes only when module is enabled */
+    if (image_grab_register_routes() < 0) {
+        IMP_LOG_ERR(TAG, "Failed to register HTTP routes");
+        return -1;
+    }
+#endif
+
     g_image_grab_state.running = true;
     IMP_LOG_INFO(TAG, "Image grab module started successfully");
     return 0;

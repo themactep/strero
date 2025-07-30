@@ -63,6 +63,10 @@ static void handle_snap2_jpg(int client_socket, const char* request);
 static void handle_snap3_jpg(int client_socket, const char* request);
 static void handle_stream0_mjpeg(int client_socket, const char* request);
 static void handle_stream1_mjpeg(int client_socket, const char* request);
+
+/* Image grab fallback handlers */
+static void handle_image_grab_fallback(int client_socket, const char* request);
+static int http_register_image_grab_fallback_routes(void);
 static void handle_stream2_mjpeg(int client_socket, const char* request);
 static void handle_stream3_mjpeg(int client_socket, const char* request);
 static void handle_stream0_h264(int client_socket, const char* request);
@@ -141,15 +145,22 @@ int http_module_start(void)
         return -1;
     }
 
-    /* Register routes from modules */
+    /* Register fallback routes for image_grab if module is disabled */
 #ifdef ENABLE_IMAGE_GRAB
-    extern int image_grab_register_routes(void);
-    if (image_grab_register_routes() < 0) {
-        IMP_LOG_ERR(TAG, "Failed to register image grab routes");
-        http_router_cleanup();
-        return -1;
+    /* Check if image_grab module is enabled */
+    extern int is_image_grab_module_enabled(void);
+    if (!is_image_grab_module_enabled()) {
+        IMP_LOG_INFO(TAG, "Image grab module disabled, registering fallback routes");
+        if (http_register_image_grab_fallback_routes() < 0) {
+            IMP_LOG_ERR(TAG, "Failed to register image grab fallback routes");
+            http_router_cleanup();
+            return -1;
+        }
     }
 #endif
+
+    /* Module routes are now registered by modules themselves during their start() phase */
+    /* This ensures routes are only registered when modules are actually enabled */
 
 #ifdef ENABLE_METRICS
     extern int metrics_register_routes(void);
@@ -1511,4 +1522,107 @@ void handle_json_request(int client_socket, const char* endpoint)
     http_send_json(client_socket, json_content);
 
     IMP_LOG_DBG(TAG, "Served JSON endpoint: %s", endpoint);
+}
+
+/* Check if image_grab module is enabled */
+int is_image_grab_module_enabled(void)
+{
+#ifdef ENABLE_IMAGE_GRAB
+    /* Check if image_grab module is running */
+    extern module_info_t image_grab_module_info;
+    return (image_grab_module_info.state == MODULE_STATE_RUNNING);
+#else
+    return 0; /* Not compiled in */
+#endif
+}
+
+/* Fallback handler for image grab endpoints when module is disabled */
+static void handle_image_grab_fallback(int client_socket, const char* request)
+{
+    /* Create a minimal 1920x1080 PNG image (transparent strip) */
+    static const unsigned char minimal_1080p_strip_png[] = {
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+        0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x07, 0x80, 0x00, 0x00, 0x04, 0x38,
+        0x01, 0x00, 0x00, 0x00, 0x00, 0xc0, 0xa8, 0xfc, 0xee, 0x00, 0x00, 0x01,
+        0x13, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0xed, 0xc1, 0x01, 0x0d, 0x00,
+        0x00, 0x00, 0xc2, 0xa0, 0xf7, 0x4f, 0x6d, 0x0f, 0x07, 0x14, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0xa7, 0x01,
+        0xf8, 0xe5, 0x00, 0x01, 0xfc, 0xe1, 0x8f, 0xfe, 0x00, 0x00, 0x00, 0x00,
+        0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82
+    };
+    static const size_t minimal_1080p_strip_png_len = 332;
+
+    const char* response_headers =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: image/png\r\n"
+        "Content-Length: %zu\r\n"
+        "Connection: close\r\n"
+        "Cache-Control: no-cache\r\n"
+        "X-Image-Source: fallback\r\n"
+        "X-Image-Dimensions: 1920x1080\r\n"
+        "\r\n";
+
+    /* Send headers */
+    char header_buffer[512];
+    int header_len = snprintf(header_buffer, sizeof(header_buffer),
+                             response_headers, minimal_1080p_strip_png_len);
+
+    if (send(client_socket, header_buffer, header_len, 0) < 0) {
+        IMP_LOG_ERR(TAG, "Failed to send fallback image headers");
+        return;
+    }
+
+    /* Send minimal PNG data */
+    if (send(client_socket, minimal_1080p_strip_png, minimal_1080p_strip_png_len, 0) < 0) {
+        IMP_LOG_ERR(TAG, "Failed to send fallback image data");
+        return;
+    }
+
+    IMP_LOG_DBG(TAG, "Sent fallback 1080p PNG image (%zu bytes)", minimal_1080p_strip_png_len);
+}
+
+/* Register fallback routes for image grab endpoints */
+static int http_register_image_grab_fallback_routes(void)
+{
+    /* Define fallback routes for image grab endpoints */
+    static const http_route_t fallback_routes[] = {
+        {"/image0.jpg", HTTP_METHOD_GET, handle_image_grab_fallback, "http_fallback", "Channel 0 fallback (PNG as JPEG)"},
+        {"/image1.jpg", HTTP_METHOD_GET, handle_image_grab_fallback, "http_fallback", "Channel 1 fallback (PNG as JPEG)"},
+        {"/image0.nv12", HTTP_METHOD_GET, handle_image_grab_fallback, "http_fallback", "Channel 0 NV12 fallback (PNG)"},
+        {"/image1.nv12", HTTP_METHOD_GET, handle_image_grab_fallback, "http_fallback", "Channel 1 NV12 fallback (PNG)"},
+        {"/image0.yuyv422", HTTP_METHOD_GET, handle_image_grab_fallback, "http_fallback", "Channel 0 YUYV422 fallback (PNG)"},
+        {"/image1.yuyv422", HTTP_METHOD_GET, handle_image_grab_fallback, "http_fallback", "Channel 1 YUYV422 fallback (PNG)"},
+    };
+
+    /* Register all fallback routes */
+    int ret = http_router_register_routes(fallback_routes,
+                                         sizeof(fallback_routes) / sizeof(fallback_routes[0]));
+    if (ret < 0) {
+        IMP_LOG_ERR(TAG, "Failed to register image grab fallback routes");
+        return ret;
+    }
+
+    IMP_LOG_INFO(TAG, "Registered %zu image grab fallback routes",
+                 sizeof(fallback_routes) / sizeof(fallback_routes[0]));
+    return 0;
 }
