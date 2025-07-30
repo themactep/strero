@@ -89,14 +89,12 @@ typedef struct {
 /* OSD region types */
 #define OSD_REGION_FONT   0  /* Timestamp region */
 #define OSD_REGION_LOGO   1  /* Logo region */
-#define OSD_REGION_COVER  2  /* Privacy cover region */
-#define OSD_REGION_RECT   3  /* Rectangle overlay region */
-#define OSD_REGION_INFO   4  /* Info display region (brightness, etc) */
-#define OSD_REGION_MOTION_ZONE_0 5  /* Motion detection zone 0 */
-#define OSD_REGION_MOTION_ZONE_1 6  /* Motion detection zone 1 */
-#define OSD_REGION_MOTION_ZONE_2 7  /* Motion detection zone 2 */
-#define OSD_REGION_MOTION_ZONE_3 8  /* Motion detection zone 3 */
-#define OSD_REGION_COUNT  9  /* Total number of regions */
+#define OSD_REGION_INFO   2  /* Info display region (brightness, etc) */
+#define OSD_REGION_MOTION_ZONE_0 3  /* Motion detection zone 0 */
+#define OSD_REGION_MOTION_ZONE_1 4  /* Motion detection zone 1 */
+#define OSD_REGION_MOTION_ZONE_2 5  /* Motion detection zone 2 */
+#define OSD_REGION_MOTION_ZONE_3 6  /* Motion detection zone 3 */
+#define OSD_REGION_COUNT  7  /* Total number of regions */
 
 /* Motion zone region helpers */
 #define OSD_MOTION_ZONE_REGION_START OSD_REGION_MOTION_ZONE_0
@@ -209,8 +207,6 @@ int osd_create_timestamp_region(osd_context_t* ctx);
 /* Setup OSD regions */
 int osd_setup_font_region(osd_context_t* ctx);
 int osd_setup_logo_region(osd_context_t* ctx);
-int osd_setup_cover_region(osd_context_t* ctx);
-int osd_setup_rect_region(osd_context_t* ctx);
 int osd_setup_info_region(osd_context_t* ctx);
 int osd_update_info_display(osd_context_t* ctx, float iso, float gb_gain, float gr_gain, bool night_mode);
 

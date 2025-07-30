@@ -299,94 +299,120 @@ int osd_create_regions(osd_context_t* ctx)
         return -1;
     }
 
-    IMP_LOG_INFO(TAG, "Creating logo region for Group %d", ctx->group_id);
-    ctx->region_handles[OSD_REGION_LOGO] = IMP_OSD_CreateRgn(NULL);
-    IMP_LOG_INFO(TAG, "Logo region created with handle %d for Group %d",
-                 ctx->region_handles[OSD_REGION_LOGO], ctx->group_id);
-    if (ctx->region_handles[OSD_REGION_LOGO] == INVHANDLE) {
-        IMP_LOG_ERR(TAG, "Failed to create Logo region for Group %d", ctx->group_id);
-        return -1;
+    /* Only create logo region if logo is enabled in config */
+    bool logo_enabled = false;
+    if (g_osd_module_state.initialized && ctx->group_id < 2) {
+        logo_enabled = g_osd_module_state.config.streams[ctx->group_id].logo.enabled;
     }
 
-    IMP_LOG_INFO(TAG, "Creating cover region for Group %d", ctx->group_id);
-    ctx->region_handles[OSD_REGION_COVER] = IMP_OSD_CreateRgn(NULL);
-    IMP_LOG_INFO(TAG, " Cover region created with handle %d for Group %d",
-                 ctx->region_handles[OSD_REGION_COVER], ctx->group_id);
-    if (ctx->region_handles[OSD_REGION_COVER] == INVHANDLE) {
-        IMP_LOG_ERR(TAG, "Failed to create Cover region for Group %d", ctx->group_id);
-        return -1;
-    }
-
-    IMP_LOG_INFO(TAG, "Creating rect region for Group %d", ctx->group_id);
-    ctx->region_handles[OSD_REGION_RECT] = IMP_OSD_CreateRgn(NULL);
-    IMP_LOG_INFO(TAG, "Rect region created with handle %d for Group %d",
-                 ctx->region_handles[OSD_REGION_RECT], ctx->group_id);
-    if (ctx->region_handles[OSD_REGION_RECT] == INVHANDLE) {
-        IMP_LOG_ERR(TAG, "Failed to create Rect region for Group %d", ctx->group_id);
-        return -1;
-    }
-
-    IMP_LOG_INFO(TAG, "Creating info region for Group %d", ctx->group_id);
-    ctx->region_handles[OSD_REGION_INFO] = IMP_OSD_CreateRgn(NULL);
-    IMP_LOG_INFO(TAG, "Info region created with handle %d for Group %d",
-                 ctx->region_handles[OSD_REGION_INFO], ctx->group_id);
-    if (ctx->region_handles[OSD_REGION_INFO] == INVHANDLE) {
-        IMP_LOG_ERR(TAG, "Failed to create Info region for Group %d", ctx->group_id);
-        return -1;
-    }
-
-    IMP_LOG_INFO(TAG, "Creating %d motion zone regions for Group %d", OSD_MAX_MOTION_ZONES, ctx->group_id);
-    for (int i = 0; i < OSD_MAX_MOTION_ZONES; i++) {
-        int region_index = OSD_MOTION_ZONE_REGION_START + i;
-        ctx->region_handles[region_index] = IMP_OSD_CreateRgn(NULL);
-        IMP_LOG_INFO(TAG, "Motion zone region %d created with handle %d for Group %d",
-                     i, ctx->region_handles[region_index], ctx->group_id);
-        if (ctx->region_handles[region_index] == INVHANDLE) {
-            IMP_LOG_ERR(TAG, "Failed to create Motion zone region %d for Group %d", i, ctx->group_id);
+    if (logo_enabled) {
+        IMP_LOG_INFO(TAG, "Creating logo region for Group %d (enabled in config)", ctx->group_id);
+        ctx->region_handles[OSD_REGION_LOGO] = IMP_OSD_CreateRgn(NULL);
+        IMP_LOG_INFO(TAG, "Logo region created with handle %d for Group %d",
+                     ctx->region_handles[OSD_REGION_LOGO], ctx->group_id);
+        if (ctx->region_handles[OSD_REGION_LOGO] == INVHANDLE) {
+            IMP_LOG_ERR(TAG, "Failed to create Logo region for Group %d", ctx->group_id);
             return -1;
+        }
+    } else {
+        IMP_LOG_INFO(TAG, "Skipping logo region creation for Group %d (disabled in config)", ctx->group_id);
+        ctx->region_handles[OSD_REGION_LOGO] = INVHANDLE;
+    }
+
+    /* Demo regions (cover, rect) removed from codebase - not needed */
+
+    /* Only create info region if info is enabled in config */
+    bool info_enabled = false;
+    if (g_osd_module_state.initialized && ctx->group_id < 2) {
+        info_enabled = g_osd_module_state.config.streams[ctx->group_id].info.enabled;
+    }
+
+    if (info_enabled) {
+        IMP_LOG_INFO(TAG, "Creating info region for Group %d (enabled in config)", ctx->group_id);
+        ctx->region_handles[OSD_REGION_INFO] = IMP_OSD_CreateRgn(NULL);
+        IMP_LOG_INFO(TAG, "Info region created with handle %d for Group %d",
+                     ctx->region_handles[OSD_REGION_INFO], ctx->group_id);
+        if (ctx->region_handles[OSD_REGION_INFO] == INVHANDLE) {
+            IMP_LOG_ERR(TAG, "Failed to create Info region for Group %d", ctx->group_id);
+            return -1;
+        }
+    } else {
+        IMP_LOG_INFO(TAG, "Skipping info region creation for Group %d (disabled in config)", ctx->group_id);
+        ctx->region_handles[OSD_REGION_INFO] = INVHANDLE;
+    }
+
+    /* Only create motion zone regions if motion zones are enabled in config */
+    bool motion_zones_enabled = ctx->motion_zones.enabled;
+
+    /* Check if motion zones are enabled in the global module config */
+    if (g_osd_module_state.initialized && ctx->group_id < 2) {
+        motion_zones_enabled = g_osd_module_state.config.streams[ctx->group_id].motion_zones.enabled;
+    }
+
+    if (motion_zones_enabled) {
+        IMP_LOG_INFO(TAG, "Creating %d motion zone regions for Group %d (enabled in config)", OSD_MAX_MOTION_ZONES, ctx->group_id);
+        for (int i = 0; i < OSD_MAX_MOTION_ZONES; i++) {
+            int region_index = OSD_MOTION_ZONE_REGION_START + i;
+            ctx->region_handles[region_index] = IMP_OSD_CreateRgn(NULL);
+            IMP_LOG_INFO(TAG, "Motion zone region %d created with handle %d for Group %d",
+                         i, ctx->region_handles[region_index], ctx->group_id);
+            if (ctx->region_handles[region_index] == INVHANDLE) {
+                IMP_LOG_ERR(TAG, "Failed to create Motion zone region %d for Group %d", i, ctx->group_id);
+                return -1;
+            }
+        }
+    } else {
+        IMP_LOG_INFO(TAG, "Skipping motion zone regions creation for Group %d (disabled in config)", ctx->group_id);
+        /* Initialize motion zone handles to INVHANDLE */
+        for (int i = 0; i < OSD_MAX_MOTION_ZONES; i++) {
+            int region_index = OSD_MOTION_ZONE_REGION_START + i;
+            ctx->region_handles[region_index] = INVHANDLE;
         }
     }
 
-    /* Register all regions to group */
-    IMP_LOG_INFO(TAG, "Registering all %d regions to Group %d", OSD_REGION_COUNT, ctx->group_id);
+    /* Register all valid regions to group */
+    IMP_LOG_INFO(TAG, "Registering all valid regions to Group %d", ctx->group_id);
+    int registered_count = 0;
     for (int i = 0; i < OSD_REGION_COUNT; i++) {
-        IMP_LOG_INFO(TAG, "Registering region %d (handle=%d) to Group %d",
-                     i, ctx->region_handles[i], ctx->group_id);
-        ret = IMP_OSD_RegisterRgn(ctx->region_handles[i], ctx->group_id, NULL);
-        if (ret < 0) {
-            IMP_LOG_ERR(TAG, "IMP_OSD_RegisterRgn failed for region %d, handle=%d, group=%d, ret=%d",
-                         i, ctx->region_handles[i], ctx->group_id, ret);
-            return -1;
+        if (ctx->region_handles[i] != INVHANDLE) {
+            IMP_LOG_INFO(TAG, "Registering region %d (handle=%d) to Group %d",
+                         i, ctx->region_handles[i], ctx->group_id);
+            ret = IMP_OSD_RegisterRgn(ctx->region_handles[i], ctx->group_id, NULL);
+            if (ret < 0) {
+                IMP_LOG_ERR(TAG, "IMP_OSD_RegisterRgn failed for region %d, handle=%d, group=%d, ret=%d",
+                             i, ctx->region_handles[i], ctx->group_id, ret);
+                return -1;
+            }
+            IMP_LOG_INFO(TAG, "Region %d registered successfully to Group %d", i, ctx->group_id);
+            registered_count++;
         }
-        IMP_LOG_INFO(TAG, "Region %d registered successfully to Group %d", i, ctx->group_id);
     }
+    IMP_LOG_INFO(TAG, "Registered %d regions to Group %d", registered_count, ctx->group_id);
 
-    // IMP_LOG_INFO(TAG, "Setting up cover region for Group %d", ctx->group_id);
-    if (osd_setup_cover_region(ctx) != 0) {
-        IMP_LOG_ERR(TAG, "Failed to setup cover region for Group %d", ctx->group_id);
-        return -1;
-    }
-    // IMP_LOG_INFO(TAG, "Cover region setup completed for Group %d", ctx->group_id);
+    /* Demo regions (cover, rect) removed from codebase */
 
-    // IMP_LOG_INFO(TAG, "Setting up rect region for Group %d", ctx->group_id);
-    if (osd_setup_rect_region(ctx) != 0) {
-        IMP_LOG_ERR(TAG, "Failed to setup rect region for Group %d", ctx->group_id);
-        return -1;
-    }
-    // IMP_LOG_INFO(TAG, "Rect region setup completed for Group %d", ctx->group_id);
-
-    // IMP_LOG_INFO(TAG, "Setting up info region for Group %d", ctx->group_id);
-    if (osd_setup_info_region(ctx) != 0) {
-        IMP_LOG_WARN(TAG, "Failed to setup info region for Group %d, continuing without info display", ctx->group_id);
+    /* Only setup info region if it was created */
+    if (ctx->region_handles[OSD_REGION_INFO] != INVHANDLE) {
+        // IMP_LOG_INFO(TAG, "Setting up info region for Group %d", ctx->group_id);
+        if (osd_setup_info_region(ctx) != 0) {
+            IMP_LOG_WARN(TAG, "Failed to setup info region for Group %d, continuing without info display", ctx->group_id);
+        } else {
+            IMP_LOG_INFO(TAG, "Info region setup completed for Group %d", ctx->group_id);
+        }
     } else {
-        IMP_LOG_INFO(TAG, "Info region setup completed for Group %d", ctx->group_id);
+        IMP_LOG_INFO(TAG, "Skipping info region setup for Group %d (disabled in config)", ctx->group_id);
     }
 
-    // IMP_LOG_INFO(TAG, "Setting up logo region for Group %d", ctx->group_id);
-    if (osd_setup_logo_region(ctx) != 0) {
-        IMP_LOG_WARN(TAG, "Failed to setup logo region for Group %d, continuing without logo", ctx->group_id);
+    /* Only setup logo region if it was created */
+    if (ctx->region_handles[OSD_REGION_LOGO] != INVHANDLE) {
+        // IMP_LOG_INFO(TAG, "Setting up logo region for Group %d", ctx->group_id);
+        if (osd_setup_logo_region(ctx) != 0) {
+            IMP_LOG_WARN(TAG, "Failed to setup logo region for Group %d, continuing without logo", ctx->group_id);
+        } else {
+            IMP_LOG_INFO(TAG, "Logo region setup completed for Group %d", ctx->group_id);
+        }
     } else {
-        IMP_LOG_INFO(TAG, "Logo region setup completed for Group %d", ctx->group_id);
+        IMP_LOG_INFO(TAG, "Skipping logo region setup for Group %d (disabled in config)", ctx->group_id);
     }
 
     // IMP_LOG_INFO(TAG, "Creating timestamp region for Group %d", ctx->group_id);
@@ -397,10 +423,15 @@ int osd_create_regions(osd_context_t* ctx)
     }
 
     // IMP_LOG_INFO(TAG, "Setting up motion zones region for Group %d", ctx->group_id);
-    if (osd_setup_motion_zones(ctx) != 0) {
-        IMP_LOG_WARN(TAG, "Failed to setup motion zones region for Group %d, continuing without motion zones", ctx->group_id);
+    /* Only setup motion zones if regions were created */
+    if (ctx->region_handles[OSD_MOTION_ZONE_REGION_START] != INVHANDLE) {
+        if (osd_setup_motion_zones(ctx) != 0) {
+            IMP_LOG_WARN(TAG, "Failed to setup motion zones region for Group %d, continuing without motion zones", ctx->group_id);
+        } else {
+            IMP_LOG_INFO(TAG, "Motion zones region setup completed for Group %d", ctx->group_id);
+        }
     } else {
-        IMP_LOG_INFO(TAG, "Motion zones region setup completed for Group %d", ctx->group_id);
+        IMP_LOG_INFO(TAG, "Motion zones regions not created (T31L optimization), skipping setup for Group %d", ctx->group_id);
     }
 
     // IMP_LOG_INFO(TAG, "All OSD regions created and configured for Group %d - SUCCESS", ctx->group_id);
@@ -1319,91 +1350,7 @@ int osd_setup_logo_region(osd_context_t* ctx)
     return 0;
 }
 
-/* Setup cover region */
-int osd_setup_cover_region(osd_context_t* ctx)
-{
-    if (!ctx) {
-        return -1;
-    }
-
-    IMPOSDRgnAttr rAttrCover;
-    memset(&rAttrCover, 0, sizeof(IMPOSDRgnAttr));
-    rAttrCover.type = OSD_REG_COVER;
-    rAttrCover.rect.p0.x = ctx->stream_width / 2 - 100;
-    rAttrCover.rect.p0.y = ctx->stream_height / 2 - 100;
-    rAttrCover.rect.p1.x = rAttrCover.rect.p0.x + ctx->stream_width / 2 - 1 + 50;
-    rAttrCover.rect.p1.y = rAttrCover.rect.p0.y + ctx->stream_height / 2 - 1 + 50;
-    rAttrCover.fmt = PIX_FMT_BGRA;
-    rAttrCover.data.coverData.color = OSD_BLACK;
-
-    int ret = IMP_OSD_SetRgnAttr(ctx->region_handles[OSD_REGION_COVER], &rAttrCover);
-    if (ret < 0) {
-        IMP_LOG_ERR(TAG, "IMP_OSD_SetRgnAttr Cover error!");
-        return -1;
-    }
-
-    IMPOSDGrpRgnAttr grAttrCover;
-    if (IMP_OSD_GetGrpRgnAttr(ctx->region_handles[OSD_REGION_COVER], ctx->group_id, &grAttrCover)
-        < 0) {
-        IMP_LOG_ERR(TAG, "IMP_OSD_GetGrpRgnAttr Cover error!");
-        return -1;
-    }
-
-    memset(&grAttrCover, 0, sizeof(IMPOSDGrpRgnAttr));
-    grAttrCover.show = 0;
-    grAttrCover.layer = 1;
-
-    if (IMP_OSD_SetGrpRgnAttr(ctx->region_handles[OSD_REGION_COVER], ctx->group_id, &grAttrCover)
-        < 0) {
-        IMP_LOG_ERR(TAG, "IMP_OSD_SetGrpRgnAttr Cover error!");
-        return -1;
-    }
-
-    return 0;
-}
-
-/* Setup rect region */
-int osd_setup_rect_region(osd_context_t* ctx)
-{
-    if (!ctx) {
-        return -1;
-    }
-
-    IMPOSDRgnAttr rAttrRect;
-    memset(&rAttrRect, 0, sizeof(IMPOSDRgnAttr));
-    rAttrRect.type = OSD_REG_RECT;
-    rAttrRect.rect.p0.x = ctx->stream_width / 2 + 100;
-    rAttrRect.rect.p0.y = ctx->stream_height / 2 + 100;
-    rAttrRect.rect.p1.x = rAttrRect.rect.p0.x + ctx->stream_width / 2 - 1 - 100;
-    rAttrRect.rect.p1.y = rAttrRect.rect.p0.y + ctx->stream_height / 2 - 1 - 100;
-    rAttrRect.fmt = PIX_FMT_BGRA;
-    /* Note: rectData structure may vary by SDK version - using basic setup */
-
-    int ret = IMP_OSD_SetRgnAttr(ctx->region_handles[OSD_REGION_RECT], &rAttrRect);
-    if (ret < 0) {
-        IMP_LOG_ERR(TAG, "IMP_OSD_SetRgnAttr Rect error!");
-        return -1;
-    }
-
-    IMPOSDGrpRgnAttr grAttrRect;
-    if (IMP_OSD_GetGrpRgnAttr(ctx->region_handles[OSD_REGION_RECT], ctx->group_id, &grAttrRect)
-        < 0) {
-        IMP_LOG_ERR(TAG, "IMP_OSD_GetGrpRgnAttr Rect error!");
-        return -1;
-    }
-
-    memset(&grAttrRect, 0, sizeof(IMPOSDGrpRgnAttr));
-    grAttrRect.show = 0;
-    grAttrRect.layer = 0;
-
-    if (IMP_OSD_SetGrpRgnAttr(ctx->region_handles[OSD_REGION_RECT], ctx->group_id, &grAttrRect)
-        < 0) {
-        IMP_LOG_ERR(TAG, "IMP_OSD_SetGrpRgnAttr Rect error!");
-        return -1;
-    }
-
-    return 0;
-}
+/* Demo regions (cover, rect) removed - they were just example code from IMP SDK samples */
 
 /* Setup info region */
 int osd_setup_info_region(osd_context_t* ctx)
