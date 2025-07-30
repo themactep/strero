@@ -759,20 +759,6 @@ void onvif_module_handle_request(int client_socket, const char* request, void* s
         }
     }
 
-    // /* Check for WSDL file requests */
-    // if (strstr(request, "GET /onvif/wsdl/") != NULL) {
-    //     char filename[64] = {0};
-    //     if (sscanf(strstr(request, "GET /onvif/wsdl/"), "GET /onvif/wsdl/%63s", filename) == 1) {
-    //         /* Remove HTTP version and other parameters */
-    //         char* end = strchr(filename, ' ');
-    //         if (end) *end = '\0';
-
-    //         IMP_LOG_INFO(TAG, "ONVIF WSDL file request: %s", filename);
-    //         serve_wsdl_file(client_socket, filename);
-    //         return;
-    //     }
-    // }
-
     /* Handle ONVIF snapshot request */
     if (strstr(request, "GET /onvif/snapshot") != NULL) {
         int channel = 0;
@@ -881,37 +867,6 @@ static void send_404_response(int client_socket, const char* message)
     http_send_error(client_socket, HTTP_STATUS_NOT_FOUND, response_message);
     IMP_LOG_WARN(TAG, "Sent 404 response: %s", response_message);
 }
-
-/* Serve WSDL file from resources directory */
-// static void serve_wsdl_file(int client_socket, const char* filename)
-// {
-//     char filepath[256];
-//     snprintf(filepath, sizeof(filepath), "/usr/share/thingino/wsdl/%s", filename);
-
-//     FILE* file = fopen(filepath, "r");
-//     if (!file) {
-//         /* Try alternate location */
-//         snprintf(filepath, sizeof(filepath), "res/wsdl/%s", filename);
-//         file = fopen(filepath, "r");
-//     }
-
-//     if (!file) {
-//         IMP_LOG_WARN(TAG, "WSDL file not found: %s", filename);
-//         send_404_response(client_socket, "WSDL file not found");
-//         return;
-//     }
-
-//     /* Get file size */
-//     fseek(file, 0, SEEK_END);
-//     long file_size = ftell(file);
-//     fseek(file, 0, SEEK_SET);
-
-//     /* Send the file with appropriate content type */
-//     send_file_response(client_socket, "text/xml", file, file_size);
-
-//     fclose(file);
-//     IMP_LOG_INFO(TAG, "Served WSDL file: %s (%ld bytes)", filename, file_size);
-// }
 
 /* Handle GetCapabilities request */
 static void handle_get_capabilities(int client_socket)

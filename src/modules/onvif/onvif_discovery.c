@@ -23,6 +23,10 @@
 #define TAG "ONVIF_DISCOVERY"
 #define WS_DISCOVERY_PORT 3702
 #define WS_DISCOVERY_ADDR "239.255.255.250"
+#define MAX_MESSAGE_ID_LEN 128 // A generous length for UUIDs in format "urn:uuid:..."
+#define MAX_RECENT_MESSAGES 20
+#define MAX_RECENT_CLIENTS 20
+#define RESPONSE_COOLDOWN_SECONDS 1 // Cooldown period in seconds
 
 static pthread_t discovery_thread;
 static volatile int discovery_running = 0;
@@ -32,8 +36,6 @@ static volatile int discovery_running = 0;
  * This is more reliable than IP-based checks, as a single probe packet
  * can be received multiple times on hosts with multiple network interfaces.
  */
-#define MAX_RECENT_MESSAGES 20
-#define MAX_MESSAGE_ID_LEN 128 // A generous length for UUIDs in format "urn:uuid:..."
 static struct {
     char message_ids[MAX_RECENT_MESSAGES][MAX_MESSAGE_ID_LEN];
     time_t timestamps[MAX_RECENT_MESSAGES];
@@ -46,8 +48,6 @@ static struct {
  * in a very short time frame, which can happen if the client
  * sends multiple different probe messages in quick succession.
  */
-#define MAX_RECENT_CLIENTS 20
-#define RESPONSE_COOLDOWN_SECONDS 1 // Cooldown period in seconds
 static struct {
     uint32_t client_ips[MAX_RECENT_CLIENTS];
     time_t last_response_times[MAX_RECENT_CLIENTS];
@@ -177,7 +177,8 @@ static bool is_client_in_cooldown(uint32_t client_ip) {
     if (client_index != -1) {
         // Client found, check the cooldown period
         if ((now - client_cooldown_cache.last_response_times[client_index]) < RESPONSE_COOLDOWN_SECONDS) {
-            return true; // In cooldown, so we should ignore the request
+            // IMP_LOG_DBG(TAG, "Client %s is in cooldown period. Ignoring request.", inet_ntoa(client_ip));
+            return true;
         }
     }
 
@@ -285,7 +286,7 @@ static void* discovery_thread_func(void* arg)
         return NULL;
     }
 
-    // IMP_LOG_INFO(TAG, "WS-Discovery service started on port %d", WS_DISCOVERY_PORT);
+    IMP_LOG_INFO(TAG, "WS-Discovery service started on port %d", WS_DISCOVERY_PORT);
 
     while (discovery_running) {
         int recv_len = recvfrom(sock, buffer, sizeof(buffer) - 1, 0,
@@ -318,7 +319,7 @@ static void* discovery_thread_func(void* arg)
              */
             uint32_t client_ip = client_addr.sin_addr.s_addr;
             if (is_client_in_cooldown(client_ip)) {
-                //  IMP_LOG_DBG(TAG, "Ignoring probe from %s due to 1-second cooldown.", inet_ntoa(client_addr.sin_addr));
+                // IMP_LOG_DBG(TAG, "Ignoring probe from %s due to 1-second cooldown.", inet_ntoa(client_addr.sin_addr));
                  free(message_id);
                  continue;
             }
@@ -356,7 +357,8 @@ static void* discovery_thread_func(void* arg)
 int onvif_start_discovery_service(void)
 {
     if (discovery_running) {
-        return 0; /* Already running */
+        IMP_LOG_WARN(TAG, "WS-Discovery service already running");
+        return 0;
     }
 
     discovery_running = 1;
@@ -388,6 +390,6 @@ int onvif_stop_discovery_service(void)
         pthread_join(discovery_thread, NULL);
     }
 
-    // IMP_LOG_INFO(TAG, "WS-Discovery service stopped");
+    IMP_LOG_INFO(TAG, "WS-Discovery service stopped");
     return 0;
 }
