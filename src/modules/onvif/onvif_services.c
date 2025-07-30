@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include <imp/imp_encoder.h>
 #include <sys/socket.h>
+#include <sysutils/su_base.h>
 
 #include "../../config.h"
 #include "../../common.h"
@@ -171,6 +172,7 @@ static void handle_get_stream_uri(int client_socket, const char* request);
 static void handle_get_system_date_and_time(int client_socket);
 static void handle_get_video_encoder_configuration(int client_socket, const char* request);
 static void handle_get_video_sources_alt(int client_socket);
+static void handle_system_reboot(int client_socket);
 
 /* Handle GetSystemDateAndTime request */
 static void handle_get_system_date_and_time(int client_socket)
@@ -371,6 +373,47 @@ static void handle_get_snapshot_uri(int client_socket)
 
     /* Log the response */
     IMP_LOG_INFO(TAG, "Sent GetSnapshotUri response: %d bytes", sent);
+}
+
+/* Handle SystemReboot request */
+static void handle_system_reboot(int client_socket)
+{
+    char uuid[37];
+    char body[512];
+
+    generate_uuid(uuid, sizeof(uuid));
+    IMP_LOG_INFO(TAG, "Handling SystemReboot request");
+
+    /* Create response body - SystemReboot returns a simple message */
+    snprintf(body, sizeof(body),
+        "<tds:SystemRebootResponse>"
+         "<tt:Message>Rebooting in 5 seconds.</tt:Message>"
+        "</tds:SystemRebootResponse>");
+
+    /* Use the helper function to send the SOAP response */
+    int sent = 0;
+    send_soap_response(client_socket,
+                      "http://www.onvif.org/ver10/device/wsdl/SystemRebootResponse",
+                      uuid,
+                      body,
+                      &sent);
+
+    /* Log the response */
+    IMP_LOG_INFO(TAG, "Sent SystemReboot response: %d bytes", sent);
+
+    /* Perform the actual reboot after sending response */
+    IMP_LOG_WARN(TAG, "System reboot requested via ONVIF - rebooting device");
+
+    /* Give some time for the response to be sent */
+    usleep(500000); /* 500ms delay */
+
+    /* Call the Ingenic SDK reboot function */
+    int ret = SU_Base_Reboot();
+    if (ret != 0) {
+        IMP_LOG_ERR(TAG, "SU_Base_Reboot() failed with code: %d", ret);
+        /* Fallback to system reboot command */
+        system("reboot");
+    }
 }
 
 /* Handle GetServiceCapabilities request */
@@ -746,6 +789,8 @@ void onvif_module_handle_request(int client_socket, const char* request, void* s
                 /* Generic service capabilities */
                 handle_get_service_capabilities(client_socket);
             }
+        } else if (strstr(action, "SystemReboot") != NULL) {
+            handle_system_reboot(client_socket);
         } else {
             /* Unsupported action */
             IMP_LOG_WARN(TAG, "Unsupported ONVIF action: %s", action);
