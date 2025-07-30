@@ -111,6 +111,8 @@ These files are compiled and used in the current pure C implementation.
 - **TLS Security** - OpenSSL-based encryption and certificate support
 - **Official Sample Pattern** - Exact Ingenic initialization sequence
 - **Robust Error Handling** - Comprehensive error checking and recovery
+- **Motion Detection** - Hardware-accelerated IVS motion detection with configurable zones
+- **OSD System** - On-screen display with motion zone visualization and multi-stream support
 
 ### 🔄 **In Progress**
 
@@ -120,10 +122,8 @@ These files are compiled and used in the current pure C implementation.
 ### ❌ **Not Yet Implemented**
 
 - **Audio Support** - Audio encoding and streaming
-- **Motion Detection** - Video analysis features
-- **OSD Functionality** - On-screen display
 - **WebSocket Interface** - Web-based control
-- **Advanced Features** - Adaptive bitrate, zone management
+- **Advanced Features** - Adaptive bitrate
 
 ## Build System
 
@@ -201,6 +201,11 @@ The original C++ implementation has been moved to `src-legacy-cpp/` for referenc
 - [Architecture Overview](ARCHITECTURE.md) - System architecture
 - [Configuration Reference](QUICK_CONFIG_REFERENCE.md) - Configuration options
 - [Debugging Guide](DEBUGGING_GUIDE.md) - Troubleshooting and debugging
+
+### Motion Detection Documentation
+- [Motion Detection Guide](MOTION_DETECTION.md) - Complete motion detection setup and configuration
+- [OSD Motion Zones](OSD_MOTION_ZONES.md) - Detailed motion zone visualization documentation
+- [Motion Zones Quick Reference](MOTION_ZONES_QUICK_REFERENCE.md) - Quick setup and troubleshooting guide
 
 ## Development Notes
 

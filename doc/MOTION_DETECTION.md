@@ -9,11 +9,12 @@ The Motion Detection module provides hardware-accelerated motion detection capab
 1. [Features](#features)
 2. [Architecture](#architecture)
 3. [Configuration](#configuration)
-4. [API Reference](#api-reference)
-5. [Integration](#integration)
-6. [Performance Considerations](#performance-considerations)
-7. [Troubleshooting](#troubleshooting)
-8. [Examples](#examples)
+4. [Motion Zone Visualization](#motion-zone-visualization)
+5. [API Reference](#api-reference)
+6. [Integration](#integration)
+7. [Performance Considerations](#performance-considerations)
+8. [Troubleshooting](#troubleshooting)
+9. [Examples](#examples)
 
 ## Features
 
@@ -31,6 +32,7 @@ The Motion Detection module provides hardware-accelerated motion detection capab
 - **JSON Configuration**: Easy configuration through JSON files
 - **Statistics Tracking**: Motion events, frames processed, and performance metrics
 - **Lifecycle Management**: Proper initialization, start, stop, and cleanup procedures
+- **Visual Zone Overlay**: Real-time motion zone visualization on video streams
 
 ## Architecture
 
@@ -219,6 +221,160 @@ esac
 - **No Configuration Errors**: Eliminates channel/dimension mismatches
 - **Zero Dimension Handling**: Zones with 0x0 dimensions automatically use full frame size
 
+## Motion Zone Visualization
+
+### Overview
+
+The Motion Zone Visualization feature provides real-time visual overlay of configured motion detection zones directly on video streams. This functionality helps users verify zone placement, troubleshoot detection issues, and visually confirm motion detection coverage.
+
+### Key Features
+
+#### Multi-Stream Support
+- **All Streams**: Motion zones are displayed on all available video streams
+- **Resolution Adaptive**: Zones automatically scale to match each stream's resolution
+- **Consistent Coverage**: Same relative areas covered across different stream resolutions
+- **Real-time Updates**: Zone changes are immediately reflected on all streams
+
+#### Dynamic Scaling
+- **Original Coordinates Preserved**: Zone definitions remain unchanged in configuration
+- **Per-Stream Scaling**: Each stream receives appropriately scaled zone overlays
+- **Resolution Detection**: Automatic detection of original zone coordinate system
+- **Proportional Scaling**: Maintains aspect ratio and relative positioning
+
+#### Visual Customization
+- **Zone Type Colors**: Different colors for include/exclude zones
+- **Configurable Colors**: Customizable BGRA color values for zone borders
+- **Line Width Control**: Adjustable border thickness for visibility
+- **Zone Labels**: Optional zone name display (future enhancement)
+
+### Technical Implementation
+
+#### Coordinate System Detection
+The system automatically detects the original coordinate system used for zone definitions:
+
+```c
+// Automatic coordinate system detection
+if (max_zone_x <= 640 && max_zone_y <= 360) {
+    original_width = 640; original_height = 360;    // Sub-stream coordinates
+} else if (max_zone_x <= 1280 && max_zone_y <= 720) {
+    original_width = 1280; original_height = 720;   // HD coordinates
+} else {
+    original_width = 1920; original_height = 1080;  // Full HD coordinates
+}
+```
+
+#### Per-Stream Scaling
+Each video stream receives zones scaled to its specific resolution:
+
+```c
+// Calculate scaling factors for target stream
+float scale_x = (float)stream_width / original_width;
+float scale_y = (float)stream_height / original_height;
+
+// Apply scaling to zone coordinates
+zone_x = (int)(original_x * scale_x);
+zone_y = (int)(original_y * scale_y);
+zone_w = (int)(original_width * scale_x);
+zone_h = (int)(original_height * scale_y);
+```
+
+#### OSD Integration
+Motion zones are rendered using the OSD (On-Screen Display) system:
+
+- **Rectangle Regions**: Uses `OSD_REG_RECT` for efficient rectangle rendering
+- **Hardware Acceleration**: Leverages T31 OSD hardware for minimal CPU impact
+- **Layer Management**: Zones rendered on dedicated OSD layers
+- **Show/Hide Control**: Dynamic enable/disable without recreation
+
+### Configuration
+
+#### Zone Colors
+Motion zone colors can be configured through the OSD system:
+
+```c
+// Default colors (BGRA format)
+#define DEFAULT_INCLUDE_COLOR 0xFF00FF00  // Green for include zones
+#define DEFAULT_EXCLUDE_COLOR 0xFF0000FF  // Red for exclude zones
+
+// Set custom colors
+osd_set_motion_zone_colors(stream_id, include_color, exclude_color);
+```
+
+#### Line Width
+Zone border thickness can be adjusted:
+
+```c
+// Configure line width (pixels)
+ctx->motion_zones.line_width = 2;  // Default: 2 pixels
+```
+
+#### Enable/Disable Visualization
+Zone visualization can be controlled per stream:
+
+```c
+// Enable motion zone visualization
+osd_enable_motion_zones(stream_id, true);
+
+// Disable motion zone visualization
+osd_enable_motion_zones(stream_id, false);
+```
+
+### Usage Examples
+
+#### Example 1: Full Resolution Stream (1920x1080)
+**Zone Configuration** (defined at 640x360):
+```json
+{
+  "zones": [
+    {
+      "id": 1,
+      "type": "include",
+      "x": 160,
+      "y": 90,
+      "width": 320,
+      "height": 180,
+      "name": "Center Area"
+    }
+  ]
+}
+```
+
+**Visualization Result**:
+- **Stream 0 (1920x1080)**: Zone scaled to (480, 270, 960, 540)
+- **Stream 1 (640x360)**: Zone displayed as (160, 90, 320, 180)
+
+#### Example 2: Multi-Zone Display
+**Zone Configuration**:
+```json
+{
+  "zones": [
+    {
+      "id": 1,
+      "type": "include",
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 180,
+      "name": "Top Zone"
+    },
+    {
+      "id": 2,
+      "type": "exclude",
+      "x": 200,
+      "y": 150,
+      "width": 240,
+      "height": 120,
+      "name": "Tree Area"
+    }
+  ]
+}
+```
+
+**Visual Result**:
+- **Green rectangle**: Top zone (include type)
+- **Red rectangle**: Tree area (exclude type)
+- **Both zones**: Properly scaled for each stream resolution
+
 ## API Reference
 
 ### Module Interface Functions
@@ -248,6 +404,20 @@ unsigned long motion_module_get_frames_processed(void); // Get frames processed
 #### RTSP Integration
 ```c
 int motion_module_set_rtsp_server(struct rtsp_server* server);  // Set RTSP server reference
+```
+
+#### Zone Visualization Functions
+```c
+// Enable/disable motion zone visualization for all streams
+int motion_module_enable_zone_visualization(bool enabled);
+
+// OSD-level zone visualization control (per stream)
+int osd_enable_motion_zones(int group_id, bool enabled);
+int osd_update_motion_zones(int group_id);
+int osd_set_motion_zone_colors(int group_id, uint32_t include_color, uint32_t exclude_color);
+
+// Zone data access
+int motion_module_get_zones(int* zone_count, void** zones_data);
 ```
 
 ### Configuration Structure
@@ -436,6 +606,42 @@ esac
 - Verify zone regions are within frame boundaries
 - Check available memory and system resources
 
+#### 7. Motion Zone Visualization Issues
+**Symptoms**: Motion zones not visible on video streams or incorrectly sized
+
+**Solutions**:
+- **Zones Not Visible**:
+  - Verify zone visualization is enabled in OSD configuration
+  - Check that motion module is running and zones are configured
+  - Ensure OSD system is initialized for the target stream
+  - Verify zone coordinates are within stream boundaries
+- **Incorrect Zone Sizes**:
+  - Check original coordinate system detection in logs
+  - Verify zone coordinates match intended resolution
+  - Ensure all zones are defined at the same resolution
+  - Review scaling calculations in debug output
+- **Zones on Wrong Stream**:
+  - Motion zones appear on all enabled streams by default
+  - Check OSD initialization for specific streams
+  - Verify stream IDs match expected channels
+- **Performance Impact**:
+  - Zone visualization uses minimal CPU (hardware OSD)
+  - Consider reducing line width for better performance
+  - Disable visualization when not needed for debugging
+
+**Debug Commands**:
+```bash
+# Check zone visualization status
+tail -f /var/log/messages | grep "Zone scaling\|Motion zone.*visualized"
+
+# Verify OSD regions are created
+tail -f /var/log/messages | grep "OSD.*motion.*zone"
+
+# Monitor zone coordinate scaling
+export IMP_LOG_LEVEL=DEBUG
+tail -f /var/log/messages | grep "Zone.*scaled"
+```
+
 ### Debug Information
 
 #### Log Messages
@@ -456,6 +662,13 @@ export IMP_LOG_LEVEL=DEBUG
 [I] MOTION: Executing motion script: /usr/sbin/motion stop
 [D] MOTION: Motion script started with PID 12346 (action: stop)
 [D] MOTION: Motion script completed successfully (action: stop)
+
+# Zone visualization log messages:
+[I] OSD: Zone scaling for group 0: original=640x360, stream=1920x1080, scale=(3.000,3.000)
+[I] OSD: Zone[0] 'Center Area' scaled: (160,90,320,180) -> (480,270,960,540)
+[I] OSD: Motion zone[0] 'Center Area' visualized successfully for group 0
+[I] MOTION: Successfully updated OSD motion zones for stream 0 with converted zone dimensions
+[I] MOTION: Successfully updated OSD motion zones for stream 1 with converted zone dimensions
 ```
 
 #### Configuration Validation

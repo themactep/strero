@@ -59,6 +59,16 @@ typedef struct {
             bool enabled;             /* Enable info display */
             char position[16];        /* Info position "X,Y" */
         } info;
+
+        /* Motion zones visualization */
+        struct {
+            bool enabled;             /* Enable motion zones visualization */
+            bool show_include_zones;  /* Show include zones */
+            bool show_exclude_zones;  /* Show exclude zones */
+            char include_color[16];   /* Include zone color "#RRGGBBAA" */
+            char exclude_color[16];   /* Exclude zone color "#RRGGBBAA" */
+            int line_width;           /* Zone border line width */
+        } motion_zones;
     } streams[2];                     /* Support for 2 streams */
 } osd_module_config_t;
 
@@ -82,7 +92,15 @@ typedef struct {
 #define OSD_REGION_COVER  2  /* Privacy cover region */
 #define OSD_REGION_RECT   3  /* Rectangle overlay region */
 #define OSD_REGION_INFO   4  /* Info display region (brightness, etc) */
-#define OSD_REGION_COUNT  5  /* Total number of regions */
+#define OSD_REGION_MOTION_ZONE_0 5  /* Motion detection zone 0 */
+#define OSD_REGION_MOTION_ZONE_1 6  /* Motion detection zone 1 */
+#define OSD_REGION_MOTION_ZONE_2 7  /* Motion detection zone 2 */
+#define OSD_REGION_MOTION_ZONE_3 8  /* Motion detection zone 3 */
+#define OSD_REGION_COUNT  9  /* Total number of regions */
+
+/* Motion zone region helpers */
+#define OSD_MOTION_ZONE_REGION_START OSD_REGION_MOTION_ZONE_0
+#define OSD_MAX_MOTION_ZONES 4
 
 /* OSD context for a stream */
 typedef struct osd_context {
@@ -146,6 +164,16 @@ typedef struct osd_context {
         int layer;
         IMPOSDRgnAttrData* rgnAttrData;
     } info;
+
+    /* Motion zones visualization */
+    struct {
+        bool enabled;
+        bool show_include_zones;
+        bool show_exclude_zones;
+        uint32_t include_color;  /* BGRA color for include zones */
+        uint32_t exclude_color;  /* BGRA color for exclude zones */
+        uint32_t line_width;
+    } motion_zones;
 } osd_context_t;
 
 /* Global OSD contexts array */
@@ -175,16 +203,22 @@ int osd_context_update(osd_context_t* ctx);
 /* Create all OSD regions */
 int osd_create_regions(osd_context_t* ctx);
 
-/* Create timestamp region - using new region system */
+/* Create timestamp region */
 int osd_create_timestamp_region(osd_context_t* ctx);
 
-/* Setup OSD regions - following old system pattern */
+/* Setup OSD regions */
 int osd_setup_font_region(osd_context_t* ctx);
 int osd_setup_logo_region(osd_context_t* ctx);
 int osd_setup_cover_region(osd_context_t* ctx);
 int osd_setup_rect_region(osd_context_t* ctx);
 int osd_setup_info_region(osd_context_t* ctx);
 int osd_update_info_display(osd_context_t* ctx, float iso, float gb_gain, float gr_gain, bool night_mode);
+
+/* Motion zone visualization */
+int osd_setup_motion_zones(osd_context_t* ctx);
+int osd_enable_motion_zones(int group_id, bool enabled);
+int osd_set_motion_zone_colors(int group_id, uint32_t include_color, uint32_t exclude_color);
+int osd_update_motion_zones(int group_id);
 
 /* libschrift font rendering */
 

@@ -9,8 +9,8 @@
         "format": "%F %T",
         "font": "/usr/share/fonts/default.ttf",
         "size": 48,
-        "color": "#FFFFFF44",
-        "background": "#00000000",
+        "color": "#FFFFFFFF",
+        "background": "#00000044",
         "position": "10,10"
       },
       "logo": {
@@ -23,6 +23,14 @@
       "info": {
         "enabled": false,
         "position": "10,50"
+      },
+      "motion_zones": {
+        "enabled": true,
+        "show_include_zones": true,
+        "show_exclude_zones": true,
+        "include_color": "#80FF80FF",
+        "exclude_color": "#FF8080FF",
+        "line_width": 2
       }
     },
     {
@@ -33,7 +41,7 @@
         "font": "/usr/share/fonts/default.ttf",
         "size": 24,
         "color": "#FFFFFFFF",
-        "background": "#00000000",
+        "background": "#00000044",
         "position": "5,5"
       },
       "logo": {
@@ -46,6 +54,14 @@
       "info": {
         "enabled": false,
         "position": "5,25"
+      },
+      "motion_zones": {
+        "enabled": true,
+        "show_include_zones": true,
+        "show_exclude_zones": true,
+        "include_color": "#00FF0060",
+        "exclude_color": "#FF000060",
+        "line_width": 2
       }
     }
   ]

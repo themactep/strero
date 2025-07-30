@@ -719,28 +719,19 @@ int motion_module_init(void* config)
         IMP_LOG_INFO(TAG, "Using channel %d dimensions: %dx%d",
                      g_motion_state.config.monitor_stream, actual_width, actual_height);
 
-        /* Adjust zone regions to fit actual frame size */
+        /* Keep original zone coordinates intact - scaling will be done in OSD per stream */
+        /* Only handle full-frame zones (width/height = 0) and basic validation */
         for (int i = 0; i < g_motion_state.config.zone_count; i++) {
-            /* If zone extends beyond actual frame, adjust it */
-            if (g_motion_state.config.zones[i].x + g_motion_state.config.zones[i].width > actual_width) {
-                g_motion_state.config.zones[i].width = actual_width - g_motion_state.config.zones[i].x;
-                IMP_LOG_WARN(TAG, "Adjusted zone[%d] '%s' width to %d to fit frame",
-                            i, g_motion_state.config.zones[i].name, g_motion_state.config.zones[i].width);
-            }
-            if (g_motion_state.config.zones[i].y + g_motion_state.config.zones[i].height > actual_height) {
-                g_motion_state.config.zones[i].height = actual_height - g_motion_state.config.zones[i].y;
-                IMP_LOG_WARN(TAG, "Adjusted zone[%d] '%s' height to %d to fit frame",
-                            i, g_motion_state.config.zones[i].name, g_motion_state.config.zones[i].height);
-            }
-
-            /* If zone dimensions are 0, use actual frame size */
+            /* Handle full-frame zones (0,0,0,0) - set to actual IVS frame size */
             if (g_motion_state.config.zones[i].width == 0 && g_motion_state.config.zones[i].height == 0) {
                 g_motion_state.config.zones[i].width = actual_width;
                 g_motion_state.config.zones[i].height = actual_height;
-                IMP_LOG_INFO(TAG, "Set zone[%d] '%s' to full frame dimensions: %dx%d",
+                IMP_LOG_INFO(TAG, "Set zone[%d] '%s' to IVS frame dimensions: %dx%d",
                             i, g_motion_state.config.zones[i].name, actual_width, actual_height);
             }
         }
+
+        IMP_LOG_INFO(TAG, "Keeping original zone coordinates for OSD scaling per stream resolution");
     } else {
         IMP_LOG_WARN(TAG, "Failed to get channel dimensions, using configured values: %dx%d",
                      g_motion_state.config.frame_width, g_motion_state.config.frame_height);
@@ -750,6 +741,21 @@ int motion_module_init(void* config)
     if (pthread_mutex_init(&g_motion_state.mutex, NULL) != 0) {
         IMP_LOG_ERR(TAG, "Failed to initialize mutex");
         return -1;
+    }
+
+    /* Update OSD with converted zone dimensions for all streams (after zone conversion is complete) */
+    extern int osd_update_motion_zones(int group_id);
+
+    /* Update motion zones on all available streams where OSD is enabled */
+    for (int stream_id = 0; stream_id < 2; stream_id++) {  /* Assuming max 2 streams */
+        IMP_LOG_INFO(TAG, "Attempting to update OSD motion zones for stream %d", stream_id);
+
+        int osd_result = osd_update_motion_zones(stream_id);
+        if (osd_result == 0) {
+            IMP_LOG_INFO(TAG, "Successfully updated OSD motion zones for stream %d with converted zone dimensions", stream_id);
+        } else {
+            IMP_LOG_DBG(TAG, "Failed to update OSD motion zones for stream %d (result=%d), may not be enabled or ready", stream_id, osd_result);
+        }
     }
 
     /* Reset state */
@@ -801,6 +807,21 @@ int motion_module_start(void)
     }
 
     g_motion_state.running = true;
+
+    /* Retry OSD motion zones update for all streams now that everything is started */
+    extern int osd_update_motion_zones(int group_id);
+
+    for (int stream_id = 0; stream_id < 2; stream_id++) {  /* Assuming max 2 streams */
+        IMP_LOG_INFO(TAG, "Retrying OSD motion zones update for stream %d after module start", stream_id);
+
+        int osd_result = osd_update_motion_zones(stream_id);
+        if (osd_result == 0) {
+            IMP_LOG_INFO(TAG, "Successfully updated OSD motion zones for stream %d after module start", stream_id);
+        } else {
+            IMP_LOG_DBG(TAG, "Still failed to update OSD motion zones for stream %d (result=%d)", stream_id, osd_result);
+        }
+    }
+
     IMP_LOG_INFO(TAG, "Motion detection module started successfully");
     return 0;
 }
@@ -1009,6 +1030,63 @@ int motion_module_set_rtsp_server(struct rtsp_server* server)
     g_motion_state.rtsp_server = server;
     IMP_LOG_INFO(TAG, "RTSP server reference set for motion detection module");
     return 0;
+}
+
+/* Zone information for OSD visualization */
+int motion_module_get_zones(int* zone_count, void** zones_data)
+{
+    if (!zone_count || !zones_data) {
+        return -1;
+    }
+
+    if (!g_motion_state.initialized) {
+        *zone_count = 0;
+        *zones_data = NULL;
+        return -1;
+    }
+
+    *zone_count = g_motion_state.config.zone_count;
+    *zones_data = g_motion_state.config.zones;
+
+    return 0;
+}
+
+/* Enable/disable zone visualization */
+int motion_module_enable_zone_visualization(bool enabled)
+{
+    if (!g_motion_state.initialized) {
+        return -1;
+    }
+
+    /* Enable motion zone visualization on all available streams */
+    extern int osd_enable_motion_zones(int group_id, bool enabled);
+    extern int osd_update_motion_zones(int group_id);
+
+    int success_count = 0;
+    for (int stream_id = 0; stream_id < 2; stream_id++) {  /* Assuming max 2 streams */
+        int ret = osd_enable_motion_zones(stream_id, enabled);
+        if (ret == 0) {
+            success_count++;
+            if (enabled) {
+                /* Update the zones display */
+                osd_update_motion_zones(stream_id);
+            }
+            IMP_LOG_INFO(TAG, "Motion zone visualization %s for stream %d",
+                        enabled ? "enabled" : "disabled", stream_id);
+        } else {
+            IMP_LOG_DBG(TAG, "Failed to %s motion zone visualization for stream %d",
+                       enabled ? "enable" : "disable", stream_id);
+        }
+    }
+
+    return (success_count > 0) ? 0 : -1;
+}
+
+/* Test function to enable zone visualization */
+int motion_module_test_zone_visualization(void)
+{
+    IMP_LOG_INFO(TAG, "Testing motion zone visualization");
+    return motion_module_enable_zone_visualization(true);
 }
 
 /* API functions */

@@ -186,6 +186,14 @@ int osd_context_init(osd_context_t* ctx, int group_id, int stream_width, int str
     }
     IMP_LOG_INFO(TAG, "All %d region handles initialized to INVHANDLE (%d)", OSD_REGION_COUNT, INVHANDLE);
 
+    /* Initialize motion zones visualization with defaults */
+    ctx->motion_zones.enabled = false;
+    ctx->motion_zones.show_include_zones = true;
+    ctx->motion_zones.show_exclude_zones = true;
+    ctx->motion_zones.include_color = 0x00FF0080; /* Green with 50% alpha (BGRA) */
+    ctx->motion_zones.exclude_color = 0x0000FF80; /* Red with 50% alpha (BGRA) */
+    ctx->motion_zones.line_width = 2;
+
     /* Initialize mutex */
     if (pthread_mutex_init(&ctx->mutex, NULL) != 0) {
         IMP_LOG_ERR(TAG, "Failed to initialize mutex for group %d", group_id);
@@ -327,6 +335,18 @@ int osd_create_regions(osd_context_t* ctx)
         return -1;
     }
 
+    IMP_LOG_INFO(TAG, "Creating %d motion zone regions for Group %d", OSD_MAX_MOTION_ZONES, ctx->group_id);
+    for (int i = 0; i < OSD_MAX_MOTION_ZONES; i++) {
+        int region_index = OSD_MOTION_ZONE_REGION_START + i;
+        ctx->region_handles[region_index] = IMP_OSD_CreateRgn(NULL);
+        IMP_LOG_INFO(TAG, "Motion zone region %d created with handle %d for Group %d",
+                     i, ctx->region_handles[region_index], ctx->group_id);
+        if (ctx->region_handles[region_index] == INVHANDLE) {
+            IMP_LOG_ERR(TAG, "Failed to create Motion zone region %d for Group %d", i, ctx->group_id);
+            return -1;
+        }
+    }
+
     /* Register all regions to group */
     IMP_LOG_INFO(TAG, "Registering all %d regions to Group %d", OSD_REGION_COUNT, ctx->group_id);
     for (int i = 0; i < OSD_REGION_COUNT; i++) {
@@ -374,6 +394,13 @@ int osd_create_regions(osd_context_t* ctx)
         IMP_LOG_WARN(TAG, "Failed to create timestamp region for Group %d, continuing without timestamp", ctx->group_id);
     } else {
         IMP_LOG_INFO(TAG, "Timestamp region created successfully for Group %d", ctx->group_id);
+    }
+
+    // IMP_LOG_INFO(TAG, "Setting up motion zones region for Group %d", ctx->group_id);
+    if (osd_setup_motion_zones(ctx) != 0) {
+        IMP_LOG_WARN(TAG, "Failed to setup motion zones region for Group %d, continuing without motion zones", ctx->group_id);
+    } else {
+        IMP_LOG_INFO(TAG, "Motion zones region setup completed for Group %d", ctx->group_id);
     }
 
     // IMP_LOG_INFO(TAG, "All OSD regions created and configured for Group %d - SUCCESS", ctx->group_id);
@@ -1673,6 +1700,52 @@ static void osd_apply_module_config_to_stream(stream_config_t* stream_config, in
                 stream_config->osd.time.format);
 }
 
+/* Apply motion zones configuration from module config to context */
+static void osd_apply_motion_zones_config(osd_context_t* ctx, int stream_index)
+{
+    if (!ctx || stream_index < 0 || stream_index >= 2) {
+        return;
+    }
+
+    /* Get motion zones config from module config */
+    osd_module_config_t* module_config = &g_osd_module_state.config;
+
+    ctx->motion_zones.enabled = module_config->streams[stream_index].motion_zones.enabled;
+    ctx->motion_zones.show_include_zones = module_config->streams[stream_index].motion_zones.show_include_zones;
+    ctx->motion_zones.show_exclude_zones = module_config->streams[stream_index].motion_zones.show_exclude_zones;
+    ctx->motion_zones.line_width = module_config->streams[stream_index].motion_zones.line_width;
+
+    /* Parse color strings directly to BGRA format */
+    if (strlen(module_config->streams[stream_index].motion_zones.include_color) > 0) {
+        const char* color_str = module_config->streams[stream_index].motion_zones.include_color;
+        if (color_str[0] == '#' && strlen(color_str) == 9) {
+            uint32_t rgba_color = (uint32_t)strtoul(color_str + 1, NULL, 16);
+            /* Convert RGBA to BGRA format */
+            ctx->motion_zones.include_color = ((rgba_color & 0xFF000000)) |        /* A */
+                                             ((rgba_color & 0x00FF0000) >> 16) |   /* R -> B */
+                                             ((rgba_color & 0x0000FF00)) |         /* G */
+                                             ((rgba_color & 0x000000FF) << 16);    /* B -> R */
+        }
+    }
+    if (strlen(module_config->streams[stream_index].motion_zones.exclude_color) > 0) {
+        const char* color_str = module_config->streams[stream_index].motion_zones.exclude_color;
+        if (color_str[0] == '#' && strlen(color_str) == 9) {
+            uint32_t rgba_color = (uint32_t)strtoul(color_str + 1, NULL, 16);
+            /* Convert RGBA to BGRA format */
+            ctx->motion_zones.exclude_color = ((rgba_color & 0xFF000000)) |        /* A */
+                                             ((rgba_color & 0x00FF0000) >> 16) |   /* R -> B */
+                                             ((rgba_color & 0x0000FF00)) |         /* G */
+                                             ((rgba_color & 0x000000FF) << 16);    /* B -> R */
+        }
+    }
+
+    IMP_LOG_INFO(TAG, "Applied motion zones config to stream %d: enabled=%s, include_color=0x%08X, exclude_color=0x%08X",
+                stream_index,
+                ctx->motion_zones.enabled ? "true" : "false",
+                ctx->motion_zones.include_color,
+                ctx->motion_zones.exclude_color);
+}
+
 /* Initialize OSD for a specific group - bridge function */
 int osd_init(int group_id, int stream_width, int stream_height)
 {
@@ -1764,6 +1837,15 @@ int osd_init(int group_id, int stream_width, int stream_height)
         IMP_LOG_ERR(TAG, "Failed to initialize OSD context for group %d", group_id);
         free(ctx);
         return -1;
+    }
+
+    /* Apply motion zones configuration */
+    IMP_LOG_INFO(TAG, "Applying motion zones configuration for group %d", group_id);
+    osd_apply_motion_zones_config(ctx, group_id);
+
+    /* Motion zones will be updated by motion module after it completes initialization */
+    if (ctx->motion_zones.enabled) {
+        IMP_LOG_INFO(TAG, "Motion zones enabled in configuration, waiting for motion module to initialize zones for group %d", group_id);
     }
 
     IMP_LOG_INFO(TAG, "OSD initialized successfully for Group %d - COMPLETE SUCCESS", group_id);
@@ -2387,6 +2469,16 @@ int osd_module_config_parse(json_object* json, void* config)
 
     osd_module_config_t* osd_config = (osd_module_config_t*)config;
 
+    /* Initialize default values for motion zones */
+    for (int i = 0; i < 2; i++) {
+        osd_config->streams[i].motion_zones.enabled = false;
+        osd_config->streams[i].motion_zones.show_include_zones = true;
+        osd_config->streams[i].motion_zones.show_exclude_zones = true;
+        strncpy(osd_config->streams[i].motion_zones.include_color, "#00FF0080", sizeof(osd_config->streams[i].motion_zones.include_color) - 1);
+        strncpy(osd_config->streams[i].motion_zones.exclude_color, "#FF000080", sizeof(osd_config->streams[i].motion_zones.exclude_color) - 1);
+        osd_config->streams[i].motion_zones.line_width = 2;
+    }
+
     /* JSON root is the osd config directly (no wrapper) */
     json_object* osd_obj = json;
 
@@ -2524,10 +2616,340 @@ int osd_module_config_parse(json_object* json, void* config)
                             }
                         }
                     }
+
+                    /* Parse motion zones settings */
+                    json_object* motion_zones_obj;
+                    if (json_object_object_get_ex(stream_obj, "motion_zones", &motion_zones_obj)) {
+                        json_object* motion_zones_enabled_obj;
+                        if (json_object_object_get_ex(motion_zones_obj, "enabled", &motion_zones_enabled_obj)) {
+                            osd_config->streams[i].motion_zones.enabled = json_object_get_boolean(motion_zones_enabled_obj);
+                        }
+
+                        json_object* show_include_obj;
+                        if (json_object_object_get_ex(motion_zones_obj, "show_include_zones", &show_include_obj)) {
+                            osd_config->streams[i].motion_zones.show_include_zones = json_object_get_boolean(show_include_obj);
+                        }
+
+                        json_object* show_exclude_obj;
+                        if (json_object_object_get_ex(motion_zones_obj, "show_exclude_zones", &show_exclude_obj)) {
+                            osd_config->streams[i].motion_zones.show_exclude_zones = json_object_get_boolean(show_exclude_obj);
+                        }
+
+                        json_object* include_color_obj;
+                        if (json_object_object_get_ex(motion_zones_obj, "include_color", &include_color_obj)) {
+                            const char* color_str = json_object_get_string(include_color_obj);
+                            if (color_str) {
+                                strncpy(osd_config->streams[i].motion_zones.include_color, color_str, sizeof(osd_config->streams[i].motion_zones.include_color) - 1);
+                            }
+                        }
+
+                        json_object* exclude_color_obj;
+                        if (json_object_object_get_ex(motion_zones_obj, "exclude_color", &exclude_color_obj)) {
+                            const char* color_str = json_object_get_string(exclude_color_obj);
+                            if (color_str) {
+                                strncpy(osd_config->streams[i].motion_zones.exclude_color, color_str, sizeof(osd_config->streams[i].motion_zones.exclude_color) - 1);
+                            }
+                        }
+
+                        json_object* line_width_obj;
+                        if (json_object_object_get_ex(motion_zones_obj, "line_width", &line_width_obj)) {
+                            osd_config->streams[i].motion_zones.line_width = json_object_get_int(line_width_obj);
+                        }
+                    }
                 }
             }
         }
     }
 
+    return 0;
+}
+
+/* Motion zone visualization functions */
+
+/* Setup motion zones region */
+int osd_setup_motion_zones(osd_context_t* ctx)
+{
+    if (!ctx) {
+        return -1;
+    }
+
+    /* Set up group region attributes for motion zones */
+    IMPOSDGrpRgnAttr grAttr;
+    memset(&grAttr, 0, sizeof(IMPOSDGrpRgnAttr));
+    grAttr.show = 1;
+    grAttr.layer = 0;  /* Layer 0 for motion zones (top layer) */
+    grAttr.scalex = 1;
+    grAttr.scaley = 1;
+    grAttr.gAlphaEn = 1;  /* Enable global alpha */
+    grAttr.fgAlhpa = 0xFF;  /* Foreground alpha */
+    grAttr.bgAlhpa = 0x00;  /* Background alpha (transparent) */
+
+    /* Setup all motion zone regions */
+    for (int i = 0; i < OSD_MAX_MOTION_ZONES; i++) {
+        int region_index = OSD_MOTION_ZONE_REGION_START + i;
+        int ret = IMP_OSD_SetGrpRgnAttr(ctx->region_handles[region_index], ctx->group_id, &grAttr);
+        if (ret < 0) {
+            IMP_LOG_ERR(TAG, "Failed to set motion zone %d group region attributes for Group %d: %d", i, ctx->group_id, ret);
+            return -1;
+        }
+        IMP_LOG_DBG(TAG, "Motion zone region %d setup completed for Group %d", i, ctx->group_id);
+    }
+
+    IMP_LOG_INFO(TAG, "All %d motion zone regions setup completed for Group %d", OSD_MAX_MOTION_ZONES, ctx->group_id);
+    return 0;
+}
+
+/* Enable/disable motion zone visualization */
+int osd_enable_motion_zones(int group_id, bool enabled)
+{
+    if (group_id < 0 || group_id >= MAX_STREAMS || !g_osd_contexts[group_id]) {
+        IMP_LOG_ERR(TAG, "Invalid group_id %d or context not initialized", group_id);
+        return -1;
+    }
+
+    osd_context_t* ctx = g_osd_contexts[group_id];
+    pthread_mutex_lock(&ctx->mutex);
+
+    ctx->motion_zones.enabled = enabled;
+
+    if (!enabled) {
+        /* Hide all motion zone regions */
+        for (int i = 0; i < OSD_MAX_MOTION_ZONES; i++) {
+            int region_index = OSD_MOTION_ZONE_REGION_START + i;
+            IMP_OSD_ShowRgn(ctx->region_handles[region_index], group_id, 0);
+        }
+    }
+
+    pthread_mutex_unlock(&ctx->mutex);
+
+    IMP_LOG_INFO(TAG, "Motion zones visualization %s for group %d",
+                enabled ? "enabled" : "disabled", group_id);
+    return 0;
+}
+
+/* Set motion zone colors */
+int osd_set_motion_zone_colors(int group_id, uint32_t include_color, uint32_t exclude_color)
+{
+    if (group_id < 0 || group_id >= MAX_STREAMS || !g_osd_contexts[group_id]) {
+        IMP_LOG_ERR(TAG, "Invalid group_id %d or context not initialized", group_id);
+        return -1;
+    }
+
+    osd_context_t* ctx = g_osd_contexts[group_id];
+    pthread_mutex_lock(&ctx->mutex);
+
+    ctx->motion_zones.include_color = include_color;
+    ctx->motion_zones.exclude_color = exclude_color;
+
+    pthread_mutex_unlock(&ctx->mutex);
+
+    IMP_LOG_INFO(TAG, "Motion zone colors updated for group %d: include=0x%08X, exclude=0x%08X",
+                group_id, include_color, exclude_color);
+    return 0;
+}
+
+/* Update motion zones visualization */
+int osd_update_motion_zones(int group_id)
+{
+    IMP_LOG_INFO(TAG, "osd_update_motion_zones called for group_id=%d", group_id);
+
+    if (group_id < 0 || group_id >= MAX_STREAMS || !g_osd_contexts[group_id]) {
+        IMP_LOG_ERR(TAG, "Invalid group_id %d or context not found", group_id);
+        return -1;
+    }
+
+    osd_context_t* ctx = g_osd_contexts[group_id];
+
+    if (!ctx->motion_zones.enabled) {
+        IMP_LOG_INFO(TAG, "Motion zones disabled for group %d, skipping update", group_id);
+        return 0;
+    }
+
+    IMP_LOG_INFO(TAG, "Motion zones enabled for group %d, proceeding with update", group_id);
+
+    /* Get motion zones from motion module */
+    extern int motion_module_get_zones(int* zone_count, void** zones_data);
+    int zone_count = 0;
+    void* zones_data = NULL;
+
+    if (motion_module_get_zones(&zone_count, &zones_data) != 0 || zone_count == 0) {
+        /* No zones to display, hide all motion zone regions */
+        IMP_LOG_WARN(TAG, "No motion zones available for group %d (get_zones failed or zone_count=0)", group_id);
+        for (int i = 0; i < OSD_MAX_MOTION_ZONES; i++) {
+            int region_index = OSD_MOTION_ZONE_REGION_START + i;
+            IMP_OSD_ShowRgn(ctx->region_handles[region_index], group_id, 0);
+        }
+        return 0;
+    }
+
+    IMP_LOG_INFO(TAG, "Got %d motion zones for group %d, proceeding with visualization", zone_count, group_id);
+
+    pthread_mutex_lock(&ctx->mutex);
+
+    /* Cast zones data to the correct structure from motion module */
+    struct motion_zone {
+        int id;
+        char type[16];
+        int x, y;
+        int width, height;
+        char name[64];
+    }* zones = (struct motion_zone*)zones_data;
+
+    IMP_LOG_ERR(TAG, "DEBUG: zone_count=%d, zones_data=%p", zone_count, zones_data);
+
+    /* Limit zone count to available regions */
+    int zones_to_display = (zone_count > OSD_MAX_MOTION_ZONES) ? OSD_MAX_MOTION_ZONES : zone_count;
+
+    /* Hide all motion zone regions first */
+    for (int i = 0; i < OSD_MAX_MOTION_ZONES; i++) {
+        int region_index = OSD_MOTION_ZONE_REGION_START + i;
+        IMP_OSD_ShowRgn(ctx->region_handles[region_index], group_id, 0);
+    }
+
+    /* Detect original zone coordinate system by finding max coordinates */
+    int max_zone_x = 0, max_zone_y = 0;
+    for (int i = 0; i < zones_to_display; i++) {
+        struct motion_zone* z = &zones[i];
+        if (z->width > 0 && z->height > 0) {  /* Skip full-frame zones */
+            int right = z->x + z->width;
+            int bottom = z->y + z->height;
+            if (right > max_zone_x) max_zone_x = right;
+            if (bottom > max_zone_y) max_zone_y = bottom;
+        }
+    }
+
+    /* Determine original coordinate system */
+    int original_width = 1920, original_height = 1080;  /* Default to full resolution */
+    if (max_zone_x > 0 && max_zone_y > 0) {
+        if (max_zone_x <= 640 && max_zone_y <= 360) {
+            original_width = 640; original_height = 360;
+        } else if (max_zone_x <= 1280 && max_zone_y <= 720) {
+            original_width = 1280; original_height = 720;
+        } else {
+            original_width = 1920; original_height = 1080;
+        }
+    }
+
+    /* Calculate scaling factors for this stream */
+    float scale_x = (float)ctx->stream_width / original_width;
+    float scale_y = (float)ctx->stream_height / original_height;
+
+    IMP_LOG_INFO(TAG, "Zone scaling for group %d: original=%dx%d, stream=%dx%d, scale=(%.3f,%.3f)",
+                group_id, original_width, original_height, ctx->stream_width, ctx->stream_height, scale_x, scale_y);
+
+    /* Process each zone */
+    for (int zone_idx = 0; zone_idx < zones_to_display; zone_idx++) {
+        struct motion_zone* zone = &zones[zone_idx];
+        int region_index = OSD_MOTION_ZONE_REGION_START + zone_idx;
+
+        IMP_LOG_ERR(TAG, "DEBUG: Zone[%d] - id=%d, type='%s', name='%s', original coords=(%d,%d,%d,%d)",
+                   zone_idx, zone->id, zone->type, zone->name, zone->x, zone->y, zone->width, zone->height);
+
+        /* Scale zone coordinates to match this stream's resolution */
+        int zone_x, zone_y, zone_w, zone_h;
+
+        /* Handle full-frame zones (width/height = 0) */
+        if (zone->width == 0 || zone->height == 0) {
+            zone_x = 0;
+            zone_y = 0;
+            zone_w = ctx->stream_width;
+            zone_h = ctx->stream_height;
+        } else {
+            /* Scale coordinates proportionally */
+            zone_x = (int)(zone->x * scale_x);
+            zone_y = (int)(zone->y * scale_y);
+            zone_w = (int)(zone->width * scale_x);
+            zone_h = (int)(zone->height * scale_y);
+        }
+
+        IMP_LOG_INFO(TAG, "Zone[%d] '%s' scaled: (%d,%d,%d,%d) -> (%d,%d,%d,%d)",
+                    zone_idx, zone->name, zone->x, zone->y, zone->width, zone->height,
+                    zone_x, zone_y, zone_w, zone_h);
+
+        /* Skip zones with invalid dimensions */
+        if (zone_w <= 0 || zone_h <= 0) {
+            IMP_LOG_WARN(TAG, "Skipping zone[%d] '%s' with invalid dimensions: %dx%d",
+                        zone_idx, zone->name, zone_w, zone_h);
+            continue;
+        }
+
+        /* Skip zones that are completely outside the frame */
+        if (zone_x >= ctx->stream_width || zone_y >= ctx->stream_height) {
+            IMP_LOG_WARN(TAG, "Skipping zone[%d] '%s' outside frame bounds: pos=(%d,%d), frame=%dx%d",
+                        zone_idx, zone->name, zone_x, zone_y, ctx->stream_width, ctx->stream_height);
+            continue;
+        }
+
+        /* Map configured color to closest predefined OSD color */
+        uint32_t configured_color = (strcmp(zone->type, "include") == 0) ?
+                                   ctx->motion_zones.include_color : ctx->motion_zones.exclude_color;
+
+        /* Extract RGB components from #RRGGBBAA format */
+        uint32_t r = (configured_color >> 24) & 0xFF;
+        uint32_t g = (configured_color >> 16) & 0xFF;
+        uint32_t b = (configured_color >> 8) & 0xFF;
+
+        /* Map to closest predefined OSD color for T31 SDK */
+        uint32_t osd_color;
+        if (r > 200 && g < 100 && b < 100) {
+            osd_color = OSD_RED;    /* 0xffff0000 */
+        } else if (r < 100 && g > 200 && b < 100) {
+            osd_color = OSD_GREEN;  /* 0xff00ff00 */
+        } else if (r < 100 && g < 100 && b > 200) {
+            osd_color = OSD_BLUE;   /* 0xff0000ff */
+        } else if (r > 200 && g > 200 && b > 200) {
+            osd_color = OSD_WHITE;  /* 0xffffffff */
+        } else {
+            osd_color = OSD_BLACK;  /* 0xff000000 */
+        }
+
+        IMP_LOG_INFO(TAG, "Drawing motion zone '%s' (%s): rect=(%d,%d) to (%d,%d), color=0x%08X->0x%08X",
+                    zone->name, zone->type, zone_x, zone_y, zone_x + zone_w - 1, zone_y + zone_h - 1,
+                    configured_color, osd_color);
+
+        /* Use rectangle following T31 1.1.6 sample pattern */
+        IMPOSDRgnAttr rAttr;
+        memset(&rAttr, 0, sizeof(IMPOSDRgnAttr));
+        rAttr.type = OSD_REG_RECT;
+        rAttr.rect.p0.x = zone_x;
+        rAttr.rect.p0.y = zone_y;
+        rAttr.rect.p1.x = zone_x + zone_w - 1;
+        rAttr.rect.p1.y = zone_y + zone_h - 1;
+        rAttr.fmt = PIX_FMT_MONOWHITE;  /* Following T31 sample */
+        rAttr.data.lineRectData.color = osd_color;
+        rAttr.data.lineRectData.linewidth = ctx->motion_zones.line_width;
+
+        int ret = IMP_OSD_SetRgnAttr(ctx->region_handles[region_index], &rAttr);
+        if (ret == 0) {
+            /* Set group region attributes AFTER setting region attributes */
+            IMPOSDGrpRgnAttr grAttr;
+            memset(&grAttr, 0, sizeof(IMPOSDGrpRgnAttr));
+            grAttr.show = 1;
+            grAttr.layer = 0;  /* Top layer */
+            grAttr.scalex = 1;
+            grAttr.scaley = 1;
+            grAttr.gAlphaEn = 1;
+            grAttr.fgAlhpa = 0xFF;
+            grAttr.bgAlhpa = 0x00;
+
+            int grp_ret = IMP_OSD_SetGrpRgnAttr(ctx->region_handles[region_index], group_id, &grAttr);
+            if (grp_ret == 0) {
+                int show_ret = IMP_OSD_ShowRgn(ctx->region_handles[region_index], group_id, 1);
+                if (show_ret == 0) {
+                    IMP_LOG_INFO(TAG, "Motion zone[%d] '%s' visualized successfully for group %d", zone_idx, zone->name, group_id);
+                } else {
+                    IMP_LOG_ERR(TAG, "Failed to SHOW motion zone[%d] rectangle for group %d: show_ret=%d", zone_idx, group_id, show_ret);
+                }
+            } else {
+                IMP_LOG_ERR(TAG, "Failed to set GROUP region attributes for zone[%d] group %d: grp_ret=%d", zone_idx, group_id, grp_ret);
+            }
+        } else {
+            IMP_LOG_ERR(TAG, "Failed to SET motion zone[%d] rectangle attributes for group %d: set_ret=%d", zone_idx, group_id, ret);
+        }
+    }
+
+    pthread_mutex_unlock(&ctx->mutex);
+
+    IMP_LOG_INFO(TAG, "Updated %d motion zones for group %d", zones_to_display, group_id);
     return 0;
 }

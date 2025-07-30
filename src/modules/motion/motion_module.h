@@ -106,6 +106,11 @@ void motion_module_config_free(void* config);
 /* RTSP integration */
 int motion_module_set_rtsp_server(struct rtsp_server* server);
 
+/* Zone information for OSD visualization */
+int motion_module_get_zones(int* zone_count, void** zones_data);
+int motion_module_enable_zone_visualization(bool enabled);
+int motion_module_test_zone_visualization(void);
+
 /* Module registration function */
 int register_motion_module(void);
 
