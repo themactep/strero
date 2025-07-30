@@ -59,5 +59,6 @@ obj/
 .vscode/
 .trunk/
 include/*/version.hpp
+samples/
 tmp/
 *.log
