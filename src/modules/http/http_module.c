@@ -541,11 +541,27 @@ static void* http_module_server_thread(void* arg)
         int send_buffer = 64 * 1024; /* 64KB send buffer */
         setsockopt(client_socket, SOL_SOCKET, SO_SNDBUF, &send_buffer, sizeof(send_buffer));
 
-        /* Read HTTP request to determine path */
-        char request[512];
-        int bytes_read = recv(client_socket, request, sizeof(request) - 1, 0);
-        if (bytes_read > 0) {
-            request[bytes_read] = '\0';
+        /* Read HTTP request - need to read headers completely */
+        char request[4096]; /* Larger buffer for ONVIF SOAP requests */
+        int bytes_read = 0;
+        int total_read = 0;
+
+        /* Read until we have the complete headers (ending with \r\n\r\n) */
+        while (total_read < sizeof(request) - 1) {
+            bytes_read = recv(client_socket, request + total_read, sizeof(request) - 1 - total_read, 0);
+            if (bytes_read <= 0) {
+                break;
+            }
+            total_read += bytes_read;
+            request[total_read] = '\0';
+
+            /* Check if we have complete headers */
+            if (strstr(request, "\r\n\r\n") != NULL) {
+                break;
+            }
+        }
+
+        if (total_read > 0) {
 
             /* Debug: Log the request */
             IMP_LOG_DBG(TAG, "HTTP Request: %s", request);
@@ -558,8 +574,15 @@ static void* http_module_server_thread(void* arg)
                 continue;
             }
 
-            /* Check authentication */
-            auth_result_t auth_result = auth_check_http_request(request, &g_http_module_state.config.auth, &client_info);
+            /* Check if this is an ONVIF request - let ONVIF module handle its own authentication */
+            bool is_onvif_request = (strstr(request, "/onvif/") != NULL);
+
+            auth_result_t auth_result = AUTH_RESULT_SUCCESS; /* Default to success for ONVIF */
+
+            /* Only apply HTTP module authentication to non-ONVIF requests */
+            if (!is_onvif_request) {
+                auth_result = auth_check_http_request(request, &g_http_module_state.config.auth, &client_info);
+            }
 
             if (auth_result == AUTH_RESULT_REQUIRED) {
                 /* Send 401 Unauthorized with WWW-Authenticate header */

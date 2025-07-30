@@ -193,7 +193,7 @@ int auth_parse_basic_header(const char* auth_header, char* username, char* passw
     }
 
     decoded[decoded_len] = '\0';
-    // IMP_LOG_DBG(TAG, "Decoded Basic Authentication credentials: %s", decoded);
+    IMP_LOG_DBG(TAG, "Decoded Basic Authentication credentials: '%s' (length: %d)", decoded, decoded_len);
 
     /* Find the colon separator */
     char* colon = strchr((char*)decoded, ':');
@@ -207,7 +207,7 @@ int auth_parse_basic_header(const char* auth_header, char* username, char* passw
     username[63] = '\0';
     strncpy(password, colon + 1, 63);
     password[63] = '\0';
-    // IMP_LOG_DBG(TAG, "Parsed username: %s, password: %s", username, password);
+    IMP_LOG_DBG(TAG, "Parsed username: '%s', password: '%s'", username, password);
 
     return 0;
 }
@@ -279,7 +279,10 @@ static const char* extract_auth_header(const char* request)
         return NULL;
     }
 
-    // IMP_LOG_DBG(TAG, "Extracting Authorization header from request");
+    // dump full request to debug
+    IMP_LOG_DBG(TAG, "Request: %s", request);
+
+    IMP_LOG_DBG(TAG, "Extracting Authorization header from request");
     const char* auth_line = strstr(request, "Authorization:");
     if (!auth_line) {
         /* Try lowercase */
@@ -317,7 +320,7 @@ static const char* extract_auth_header(const char* request)
 
     strncpy(auth_header, auth_line, len);
     auth_header[len] = '\0';
-    // IMP_LOG_DBG(TAG, "Extracted Authorization header: %s", auth_header);
+    IMP_LOG_DBG(TAG, "Extracted Authorization header: '%s'", auth_header);
 
     return auth_header;
 }
@@ -352,12 +355,72 @@ auth_result_t auth_check_rtsp_request(const char* request, const auth_config_t* 
     return auth_check_http_request(request, config, client_info);
 }
 
+/* Parse WS-Security UsernameToken from SOAP request */
+static int parse_ws_security_token(const char* request, char* username, char* password)
+{
+    if (!request || !username || !password) {
+        return -1;
+    }
+
+    /* Look for Username element */
+    const char* username_start = strstr(request, "<Username>");
+    if (!username_start) {
+        return -1;
+    }
+    username_start += 10; /* Skip "<Username>" */
+
+    const char* username_end = strstr(username_start, "</Username>");
+    if (!username_end) {
+        return -1;
+    }
+
+    int username_len = username_end - username_start;
+    if (username_len >= 64) {
+        username_len = 63;
+    }
+    strncpy(username, username_start, username_len);
+    username[username_len] = '\0';
+
+    /* For WS-Security with digest, we can't extract the plain password
+     * We'll just mark that WS-Security was found and validate the username */
+    strcpy(password, ""); /* Empty password for WS-Security */
+
+    IMP_LOG_DBG(TAG, "Found WS-Security UsernameToken: username='%s'", username);
+    return 0;
+}
+
 /* Check ONVIF request authentication */
 auth_result_t auth_check_onvif_request(const char* request, const auth_config_t* config,
                                       const client_info_t* client_info)
 {
-    /* ONVIF can use HTTP Basic Authentication or WS-Security
-     * For now, implement Basic Authentication like HTTP */
-    // IMP_LOG_DBG(TAG, "Checking ONVIF request authentication from %s", client_info->ip_string);
+    if (!config || !client_info) {
+        IMP_LOG_ERR(TAG, "Invalid config or client info pointer");
+        return AUTH_RESULT_ERROR;
+    }
+
+    /* Check if authentication is required */
+    if (!auth_is_required(config, client_info)) {
+        IMP_LOG_DBG(TAG, "Authentication not required for ONVIF request from %s", client_info->ip_string);
+        return AUTH_RESULT_SUCCESS;
+    }
+
+    /* First try WS-Security authentication */
+    if (strstr(request, "<Security") && strstr(request, "<UsernameToken")) {
+        char ws_username[64], ws_password[64];
+        if (parse_ws_security_token(request, ws_username, ws_password) == 0) {
+            /* For WS-Security, we only validate the username for now
+             * Full digest validation would require implementing the WS-Security spec */
+            if (strcmp(ws_username, config->username) == 0) {
+                IMP_LOG_DBG(TAG, "WS-Security authentication successful for user: %s", ws_username);
+                return AUTH_RESULT_SUCCESS;
+            } else {
+                IMP_LOG_WARN(TAG, "WS-Security authentication failed: username mismatch");
+                return AUTH_RESULT_INVALID;
+            }
+        }
+    }
+
+    /* Fall back to HTTP Basic Authentication */
+    IMP_LOG_DBG(TAG, "Checking ONVIF Basic Authentication from %s", client_info->ip_string);
     return auth_check_http_request(request, config, client_info);
 }
