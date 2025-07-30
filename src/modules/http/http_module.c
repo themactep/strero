@@ -541,27 +541,14 @@ static void* http_module_server_thread(void* arg)
         int send_buffer = 64 * 1024; /* 64KB send buffer */
         setsockopt(client_socket, SOL_SOCKET, SO_SNDBUF, &send_buffer, sizeof(send_buffer));
 
-        /* Read HTTP request - need to read headers completely */
+        /* Read HTTP request - use simple approach first */
         char request[4096]; /* Larger buffer for ONVIF SOAP requests */
-        int bytes_read = 0;
-        int total_read = 0;
-
-        /* Read until we have the complete headers (ending with \r\n\r\n) */
-        while (total_read < sizeof(request) - 1) {
-            bytes_read = recv(client_socket, request + total_read, sizeof(request) - 1 - total_read, 0);
-            if (bytes_read <= 0) {
-                break;
-            }
-            total_read += bytes_read;
-            request[total_read] = '\0';
-
-            /* Check if we have complete headers */
-            if (strstr(request, "\r\n\r\n") != NULL) {
-                break;
-            }
+        int bytes_read = recv(client_socket, request, sizeof(request) - 1, 0);
+        if (bytes_read > 0) {
+            request[bytes_read] = '\0';
         }
 
-        if (total_read > 0) {
+        if (bytes_read > 0) {
 
             /* Debug: Log the request */
             IMP_LOG_DBG(TAG, "HTTP Request: %s", request);
@@ -582,6 +569,8 @@ static void* http_module_server_thread(void* arg)
             /* Only apply HTTP module authentication to non-ONVIF requests */
             if (!is_onvif_request) {
                 auth_result = auth_check_http_request(request, &g_http_module_state.config.auth, &client_info);
+            } else {
+                IMP_LOG_DBG(TAG, "ONVIF request detected - bypassing HTTP authentication");
             }
 
             if (auth_result == AUTH_RESULT_REQUIRED) {
