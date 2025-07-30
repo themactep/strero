@@ -108,6 +108,9 @@ typedef struct rtsp_client {
     bool needs_idr;
     unsigned long idr_wait_start_us;  /* When client started waiting for IDR frame */
 
+    /* ONVIF backchannel support */
+    bool supports_backchannel;       /* Whether client supports ONVIF audio backchannel */
+
     /* TLS/SSL context (for RTSPS) */
     bool use_tls;                     /* Whether this client is using TLS */
     void* ssl_context;                /* SSL context (OpenSSL SSL* or mbedTLS ssl_context) */

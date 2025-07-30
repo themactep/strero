@@ -74,7 +74,7 @@ extern stream_info_t* get_video_input(int channel);
 static rtsp_client_t* find_free_client_slot(rtsp_server_t* server);
 static void cleanup_client(rtsp_client_t* client);
 static int extract_stream_name_from_url(rtsp_server_t* server, const char* url, char* stream_name, size_t stream_name_size);
-static int generate_sdp(rtsp_server_t* server, const char* stream_name, char* sdp_buffer, size_t buffer_size);
+static int generate_sdp(rtsp_server_t* server, const char* stream_name, char* sdp_buffer, size_t buffer_size, rtsp_client_t* client);
 static void generate_session_id(char* session_id, size_t size);
 static int handle_client_connection(rtsp_server_t* server, int client_index);
 static int handle_describe_request(rtsp_server_t* server, rtsp_client_t* client, const char* url);
@@ -1870,6 +1870,14 @@ static int handle_describe_request(rtsp_server_t* server,
     char sdp[MAX_SDP_SIZE];
     char stream_name[MAX_RTSP_URL_LEN];
 
+    /* Check if client supports ONVIF backchannel */
+    if (strstr(client->request_buffer, "Require: www.onvif.org/ver20/backchannel") != NULL) {
+        client->supports_backchannel = true;
+        IMP_LOG_INFO(TAG, "Client supports ONVIF audio backchannel");
+    } else {
+        client->supports_backchannel = false;
+    }
+
     // IMP_LOG_INFO(TAG, "Handling DESCRIBE request for URL: %s", url);
 
     /* Extract stream name from URL using shared parser */
@@ -1898,7 +1906,7 @@ static int handle_describe_request(rtsp_server_t* server,
     }
 
     /* Generate SDP */
-    if (generate_sdp(server, stream_name, sdp, sizeof(sdp)) < 0) {
+    if (generate_sdp(server, stream_name, sdp, sizeof(sdp), client) < 0) {
         return send_rtsp_response(client,
                                   RTSP_STATUS_INTERNAL_ERROR,
                                   "Internal Server Error",
@@ -1928,9 +1936,23 @@ static int handle_setup_request(rtsp_server_t* server,
      * Standard RTSP/ONVIF convention: track1=video, track2=audio */
     int track_id = 0; /* Default to video track */
     char* track_suffix = NULL;
+    bool is_backchannel = false;
 
-    /* Handle standard track1/track2 naming (ONVIF/industry standard) */
-    if ((track_suffix = strstr(stream_name, "/track1")) != NULL) {
+    /* Handle ONVIF audio backchannel tracks */
+    if ((track_suffix = strstr(stream_name, "/G711_audiobackchannel")) != NULL) {
+        track_id = 3; /* G.711 backchannel */
+        is_backchannel = true;
+        *track_suffix = '\0';
+        IMP_LOG_INFO(TAG, "SETUP for G.711 audio backchannel");
+    } else if ((track_suffix = strstr(stream_name, "/G726_audiobackchannel")) != NULL) {
+        track_id = 4; /* G.726 backchannel */
+        is_backchannel = true;
+        *track_suffix = '\0';
+        IMP_LOG_INFO(TAG, "SETUP for G.726 audio backchannel");
+    } else if ((track_suffix = strstr(stream_name, "/audio")) != NULL) {
+        track_id = 2; /* Regular audio track */
+        *track_suffix = '\0';
+    } else if ((track_suffix = strstr(stream_name, "/track1")) != NULL) {
         track_id = 1; /* Video track */
         *track_suffix = '\0';
     } else if ((track_suffix = strstr(stream_name, "/track2")) != NULL) {
@@ -1964,6 +1986,16 @@ static int handle_setup_request(rtsp_server_t* server,
                          server->streams[i].channel);
         }
         return send_rtsp_response(client, RTSP_STATUS_NOT_FOUND, "Not Found", NULL, NULL);
+    }
+
+    /* Validate backchannel requests */
+    if (is_backchannel) {
+        /* Check if client supports ONVIF backchannel */
+        if (strstr(client->request_buffer, "Require: www.onvif.org/ver20/backchannel") == NULL) {
+            IMP_LOG_ERR(TAG, "Backchannel SETUP request missing required ONVIF header");
+            return send_rtsp_response(client, RTSP_STATUS_BAD_REQUEST, "Bad Request", NULL, NULL);
+        }
+        IMP_LOG_INFO(TAG, "Valid ONVIF backchannel SETUP request");
     }
 
     /* Store stream info in client - for video tracks (track1 or trackID=0) */
@@ -2100,6 +2132,12 @@ static int handle_play_request(rtsp_server_t* server, rtsp_client_t* client)
 {
     // IMP_LOG_INFO(TAG, "Handling PLAY request");
 
+    /* Check for ONVIF backchannel support in PLAY request */
+    if (strstr(client->request_buffer, "Require: www.onvif.org/ver20/backchannel") != NULL) {
+        IMP_LOG_INFO(TAG, "PLAY request includes ONVIF backchannel support");
+        client->supports_backchannel = true;
+    }
+
     /* Check if client is in READY state (from SETUP or PAUSE) or already PLAYING (resume) */
     if (client->state != RTSP_CLIENT_STATE_READY && client->state != RTSP_CLIENT_STATE_PLAYING) {
         IMP_LOG_ERR(TAG,
@@ -2207,7 +2245,8 @@ static void generate_session_id(char* session_id, size_t size)
 static int generate_sdp(rtsp_server_t* server,
                         const char* stream_name,
                         char* sdp_buffer,
-                        size_t buffer_size)
+                        size_t buffer_size,
+                        rtsp_client_t* client)
 {
     /* TODO: SDP Generation Enhancements
      * 1. Extract actual SPS/PPS from H.264/H.265 encoder for sprop-parameter-sets
@@ -2332,6 +2371,38 @@ static int generate_sdp(rtsp_server_t* server,
 
     /* Framerate */
     len += snprintf(sdp_buffer + len, buffer_size - len, "a=framerate:%d\r\n", stream->fps);
+
+    /* Add ONVIF audio backchannel streams if client supports it */
+    if (client && client->supports_backchannel) {
+        IMP_LOG_INFO(TAG, "Adding ONVIF audio backchannel streams to SDP");
+
+        /* Add downstream audio (from device to client) - recvonly */
+        len += snprintf(sdp_buffer + len, buffer_size - len, "m=audio 0 RTP/AVP 0\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "c=IN IP4 0.0.0.0\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "b=AS:64\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "a=rtpmap:0 PCMU/8000\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "a=control:rtsp://%s:%d/%s/audio\r\n",
+                       g_config->general.server_ip, server->config.port, stream_name);
+        len += snprintf(sdp_buffer + len, buffer_size - len, "a=recvonly\r\n");
+
+        /* Add upstream audio backchannel (from client to device) - sendonly */
+        len += snprintf(sdp_buffer + len, buffer_size - len, "m=audio 0 RTP/AVP 0\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "c=IN IP4 0.0.0.0\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "b=AS:64\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "a=rtpmap:0 PCMU/8000\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "a=control:rtsp://%s:%d/%s/G711_audiobackchannel\r\n",
+                       g_config->general.server_ip, server->config.port, stream_name);
+        len += snprintf(sdp_buffer + len, buffer_size - len, "a=sendonly\r\n");
+
+        /* Add G.726 backchannel option */
+        len += snprintf(sdp_buffer + len, buffer_size - len, "m=audio 98 RTP/AVP 98\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "c=IN IP4 0.0.0.0\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "b=AS:32\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "a=rtpmap:98 G726-16/8000\r\n");
+        len += snprintf(sdp_buffer + len, buffer_size - len, "a=control:rtsp://%s:%d/%s/G726_audiobackchannel\r\n",
+                       g_config->general.server_ip, server->config.port, stream_name);
+        len += snprintf(sdp_buffer + len, buffer_size - len, "a=sendonly\r\n");
+    }
 
     /* TODO: Add audio media description if audio is available
      * Should check if audio encoder is enabled and add:
