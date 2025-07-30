@@ -24,25 +24,6 @@
 #define WS_DISCOVERY_PORT 3702
 #define WS_DISCOVERY_ADDR "239.255.255.250"
 
-/* Generate a simple UUID for ONVIF */
-static void generate_uuid(char* uuid, size_t size) {
-    static bool seeded = false;
-    if (!seeded) {
-        srand((unsigned int)time(NULL));
-        seeded = true;
-    }
-
-    snprintf(uuid, size, "%x%x-%x-%x-%x-%x%x%x",
-        rand() & 0xffff,
-        rand() & 0xffff,
-        rand() & 0xffff,
-        ((rand() & 0x0fff) | 0x4000),
-        ((rand() & 0x3fff) | 0x8000),
-        rand() & 0xffff,
-        rand() & 0xffff,
-        rand() & 0xffff);
-}
-
 static pthread_t discovery_thread;
 static volatile int discovery_running = 0;
 

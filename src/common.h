@@ -189,6 +189,9 @@ int get_device_ip_address(char* ip_buffer, size_t buffer_size);
 /* Timing utilities */
 uint64_t get_monotonic_time_us(void);
 
+/* UUID utilities */
+void generate_uuid(char* uuid, size_t size);
+
 /* HTTP utilities */
 int safe_send(int socket, const void* data, size_t len);
 extern bool http_server_running;

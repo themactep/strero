@@ -1130,3 +1130,22 @@ void metrics_cleanup_endpoint(void)
 
     channel_metrics_initialized = false;
 }
+
+/* Generate a simple UUID for message ID */
+void generate_uuid(char* uuid, size_t size) {
+    static bool seeded = false;
+    if (!seeded) {
+        srand((unsigned int)time(NULL));
+        seeded = true;
+    }
+
+    snprintf(uuid, size, "%x%x-%x-%x-%x-%x%x%x",
+        rand() & 0xffff,
+        rand() & 0xffff,
+        rand() & 0xffff,
+        ((rand() & 0x0fff) | 0x4000),
+        ((rand() & 0x3fff) | 0x8000),
+        rand() & 0xffff,
+        rand() & 0xffff,
+        rand() & 0xffff);
+}

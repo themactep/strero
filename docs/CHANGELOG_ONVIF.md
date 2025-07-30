@@ -30,6 +30,12 @@
 
 ### 🔧 Fixes
 
+#### Code Optimization
+- **Refactored UUID generation** to use common utility function
+- **Removed duplicate code** from `onvif_services.c` and `onvif_discovery.c`
+- **Added `generate_uuid()` to `common.c`** for reuse across modules
+- **Reduced binary size** by eliminating duplicate function implementations
+
 #### HTTP Authentication Bypass
 - **Fixed HTTP module authentication** to bypass ONVIF requests
 - **Added ONVIF request detection** (`/onvif/*` path matching)

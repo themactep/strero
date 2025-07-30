@@ -53,25 +53,6 @@ static const char* soap_envelope_footer =
     "</SOAP-ENV:Body>"
     "</SOAP-ENV:Envelope>";
 
-/* Generate a simple UUID for message ID */
-static void generate_uuid(char* uuid, size_t size) {
-    static bool seeded = false;
-    if (!seeded) {
-        srand((unsigned int)time(NULL));
-        seeded = true;
-    }
-
-    snprintf(uuid, size, "%x%x-%x-%x-%x-%x%x%x",
-        rand() & 0xffff,
-        rand() & 0xffff,
-        rand() & 0xffff,
-        ((rand() & 0x0fff) | 0x4000),
-        ((rand() & 0x3fff) | 0x8000),
-        rand() & 0xffff,
-        rand() & 0xffff,
-        rand() & 0xffff);
-}
-
 /* Extract SOAP action from HTTP headers */
 static char* extract_soap_action(const char* request)
 {
