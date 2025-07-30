@@ -386,6 +386,10 @@ int onvif_register_routes(void)
         {"/onvif/media_service", HTTP_METHOD_POST, handle_onvif_request_wrapper, "onvif", "ONVIF Media service"},
         {"/onvif/event_service", HTTP_METHOD_GET, handle_onvif_request_wrapper, "onvif", "ONVIF Event service"},
         {"/onvif/event_service", HTTP_METHOD_POST, handle_onvif_request_wrapper, "onvif", "ONVIF Event service"},
+        {"/onvif/imaging_service", HTTP_METHOD_GET, handle_onvif_request_wrapper, "onvif", "ONVIF Imaging service"},
+        {"/onvif/imaging_service", HTTP_METHOD_POST, handle_onvif_request_wrapper, "onvif", "ONVIF Imaging service"},
+        {"/onvif/ptz_service", HTTP_METHOD_GET, handle_onvif_request_wrapper, "onvif", "ONVIF PTZ service"},
+        {"/onvif/ptz_service", HTTP_METHOD_POST, handle_onvif_request_wrapper, "onvif", "ONVIF PTZ service"},
         {"/onvif/snapshot", HTTP_METHOD_GET, handle_onvif_request_wrapper, "onvif", "ONVIF snapshot"},
     };
 

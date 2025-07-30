@@ -173,6 +173,8 @@ static void handle_get_system_date_and_time(int client_socket);
 static void handle_get_video_encoder_configuration(int client_socket, const char* request);
 static void handle_get_video_sources_alt(int client_socket);
 static void handle_system_reboot(int client_socket);
+static void handle_imaging_get_options(int client_socket);
+static void handle_ptz_get_service_capabilities(int client_socket);
 
 /* Handle GetSystemDateAndTime request */
 static void handle_get_system_date_and_time(int client_socket)
@@ -414,6 +416,81 @@ static void handle_system_reboot(int client_socket)
         /* Fallback to system reboot command */
         system("reboot");
     }
+}
+
+/* Handle Imaging GetOptions request */
+static void handle_imaging_get_options(int client_socket)
+{
+    char uuid[37];
+    char body[2048];
+
+    generate_uuid(uuid, sizeof(uuid));
+    IMP_LOG_INFO(TAG, "Handling Imaging GetOptions request");
+
+    /* Create response body with basic imaging options */
+    snprintf(body, sizeof(body),
+        "<timg:GetOptionsResponse xmlns:timg=\"http://www.onvif.org/ver20/imaging/wsdl\" xmlns:tt=\"http://www.onvif.org/ver10/schema\">"
+         "<timg:ImagingOptions>"
+          "<tt:Brightness>"
+           "<tt:Min>0</tt:Min>"
+           "<tt:Max>100</tt:Max>"
+          "</tt:Brightness>"
+          "<tt:ColorSaturation>"
+           "<tt:Min>0</tt:Min>"
+           "<tt:Max>100</tt:Max>"
+          "</tt:ColorSaturation>"
+          "<tt:Contrast>"
+           "<tt:Min>0</tt:Min>"
+           "<tt:Max>100</tt:Max>"
+          "</tt:Contrast>"
+          "<tt:Sharpness>"
+           "<tt:Min>0</tt:Min>"
+           "<tt:Max>100</tt:Max>"
+          "</tt:Sharpness>"
+         "</timg:ImagingOptions>"
+        "</timg:GetOptionsResponse>");
+
+    /* Use the helper function to send the SOAP response */
+    int sent = 0;
+    send_soap_response(client_socket,
+                      "http://www.onvif.org/ver20/imaging/wsdl/GetOptionsResponse",
+                      uuid,
+                      body,
+                      &sent);
+
+    /* Log the response */
+    IMP_LOG_INFO(TAG, "Sent Imaging GetOptions response: %d bytes", sent);
+}
+
+/* Handle PTZ GetServiceCapabilities request */
+static void handle_ptz_get_service_capabilities(int client_socket)
+{
+    char uuid[37];
+    char body[1024];
+
+    generate_uuid(uuid, sizeof(uuid));
+    IMP_LOG_INFO(TAG, "Handling PTZ GetServiceCapabilities request");
+
+    /* Create response body - indicate no PTZ support */
+    snprintf(body, sizeof(body),
+        "<tptz:GetServiceCapabilitiesResponse xmlns:tptz=\"http://www.onvif.org/ver20/ptz/wsdl\" xmlns:tt=\"http://www.onvif.org/ver10/schema\">"
+         "<tptz:Capabilities>"
+          "<tt:EFlip>false</tt:EFlip>"
+          "<tt:Reverse>false</tt:Reverse>"
+          "<tt:GetCompatibleConfigurations>false</tt:GetCompatibleConfigurations>"
+         "</tptz:Capabilities>"
+        "</tptz:GetServiceCapabilitiesResponse>");
+
+    /* Use the helper function to send the SOAP response */
+    int sent = 0;
+    send_soap_response(client_socket,
+                      "http://www.onvif.org/ver20/ptz/wsdl/GetServiceCapabilitiesResponse",
+                      uuid,
+                      body,
+                      &sent);
+
+    /* Log the response */
+    IMP_LOG_INFO(TAG, "Sent PTZ GetServiceCapabilities response: %d bytes", sent);
 }
 
 /* Handle GetServiceCapabilities request */
@@ -785,12 +862,16 @@ void onvif_module_handle_request(int client_socket, const char* request, void* s
                 handle_get_media_service_capabilities(client_socket);
             } else if (strstr(request, "POST /onvif/device_service") != NULL) {
                 handle_get_device_service_capabilities(client_socket);
+            } else if (strstr(request, "POST /onvif/ptz_service") != NULL) {
+                handle_ptz_get_service_capabilities(client_socket);
             } else {
                 /* Generic service capabilities */
                 handle_get_service_capabilities(client_socket);
             }
         } else if (strstr(action, "SystemReboot") != NULL) {
             handle_system_reboot(client_socket);
+        } else if (strstr(action, "GetOptions") != NULL && strstr(request, "/onvif/imaging_service") != NULL) {
+            handle_imaging_get_options(client_socket);
         } else {
             /* Unsupported action */
             IMP_LOG_WARN(TAG, "Unsupported ONVIF action: %s", action);
