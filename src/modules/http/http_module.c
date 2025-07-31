@@ -541,14 +541,40 @@ static void* http_module_server_thread(void* arg)
         int send_buffer = 64 * 1024; /* 64KB send buffer */
         setsockopt(client_socket, SOL_SOCKET, SO_SNDBUF, &send_buffer, sizeof(send_buffer));
 
-        /* Read HTTP request - use simple approach first */
-        char request[4096]; /* Larger buffer for ONVIF SOAP requests */
-        int bytes_read = recv(client_socket, request, sizeof(request) - 1, 0);
+        /* Read HTTP request - handle large ONVIF SOAP requests properly */
+        char request[8192]; /* Larger buffer for ONVIF SOAP requests */
+        int total_bytes_read = 0;
+        int bytes_read;
+
+        /* Read initial chunk */
+        bytes_read = recv(client_socket, request, sizeof(request) - 1, 0);
         if (bytes_read > 0) {
-            request[bytes_read] = '\0';
+            total_bytes_read = bytes_read;
+            request[total_bytes_read] = '\0';
+
+            /* Check if we have Content-Length header and need to read more */
+            char* content_length_header = strstr(request, "Content-Length: ");
+            if (content_length_header) {
+                int content_length = atoi(content_length_header + 16);
+                char* headers_end = strstr(request, "\r\n\r\n");
+                if (headers_end) {
+                    int headers_len = (headers_end - request) + 4;
+                    int body_received = total_bytes_read - headers_len;
+
+                    /* Read remaining body if needed */
+                    while (body_received < content_length && total_bytes_read < sizeof(request) - 1) {
+                        bytes_read = recv(client_socket, request + total_bytes_read,
+                                        sizeof(request) - 1 - total_bytes_read, 0);
+                        if (bytes_read <= 0) break;
+                        total_bytes_read += bytes_read;
+                        body_received += bytes_read;
+                        request[total_bytes_read] = '\0';
+                    }
+                }
+            }
         }
 
-        if (bytes_read > 0) {
+        if (total_bytes_read > 0) {
 
             /* Debug: Log the request */
             IMP_LOG_DBG(TAG, "HTTP Request: %s", request);

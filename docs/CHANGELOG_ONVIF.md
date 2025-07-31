@@ -30,6 +30,80 @@
 
 ### 🔧 Fixes
 
+#### WS-Security Namespace Support
+- **Fixed WS-Security detection** for namespaced XML elements (`<wsse:Security>`, `<wsse:UsernameToken>`)
+- **Enhanced username parsing** to handle both namespaced and non-namespaced elements
+- **Added debug logging** for WS-Security authentication troubleshooting
+- **Improved hardware NVR compatibility** with proper SOAP namespace handling
+
+#### SOAP Action Detection Fix
+- **Fixed SOAP action parsing** to use body extraction instead of header extraction
+- **Enhanced action detection** for requests without SOAPAction headers
+- **Fixed action name parsing** for self-closing XML tags (`<trt:GetProfiles />`)
+- **Added debug logging** for SOAP action parsing troubleshooting
+- **Improved compatibility** with NVRs that send actions in request body only
+
+#### GetServices Operation Implementation
+- **Added GetServices handler** for ONVIF service discovery
+- **Implemented service listing** with Device, Media, Event, and Imaging services
+- **Added proper ONVIF service URLs** with dynamic IP and port configuration
+- **Enhanced NVR compatibility** with complete service discovery support
+
+#### GetSystemDateAndTime Authentication Bypass
+- **Fixed ONVIF compliance** by making GetSystemDateAndTime accessible without authentication
+- **Added authentication bypass** for time synchronization requests per ONVIF specification
+- **Resolved NVR connection issues** caused by 401 errors on unauthenticated time requests
+- **Enhanced professional NVR compatibility** with proper ONVIF standard compliance
+
+#### Buffer Size Optimization
+- **Increased HTTP request buffer** from 4096 to 8192 bytes for large ONVIF SOAP requests
+- **Increased ONVIF body logging buffer** from 512 to 2048 bytes for complete request visibility
+- **Enhanced request processing** for complex ONVIF operations with large XML payloads
+- **Improved debugging capability** with full request body logging
+
+#### ONVIF Namespace and Schema Compliance
+- **Added missing ONVIF namespaces** to SOAP envelope (tptz, timg, ter)
+- **Simplified GetProfiles response** by removing complex PTZ configurations that caused NVR rejection
+- **Enhanced buffer management** with 3072-byte body buffer and 8192-byte SOAP response buffers
+- **Fixed professional NVR compatibility** with proper namespace declarations and simplified profile structure
+- **Improved ONVIF Profile S compliance** with streamlined response format for better NVR acceptance
+- **Increased logging buffer** to 3072 bytes for complete request visibility and debugging
+
+#### Professional NVR Integration Success
+- **Achieved successful NVR connection** with hardware NVR systems
+- **Verified ONVIF discovery sequence** working correctly through GetProfiles
+- **Confirmed authentication bypass** for GetSystemDateAndTime working as expected
+- **Established enterprise-grade ONVIF compatibility** for professional surveillance systems
+
+#### Wildcard SOAP Action Parser
+- **Implemented universal namespace support** with wildcard SOAP action parsing
+- **Enhanced compatibility** with any ONVIF namespace prefix (tds, trt, tev, wsnt, etc.)
+- **Future-proof parsing** that automatically supports new ONVIF operations
+- **Improved event service support** for advanced NVR integration features
+
+#### Complete Event Subscription Cycle
+- **Added WS-Notification Subscribe handler** for professional NVR compatibility
+- **Implemented proper SubscribeResponse** with subscription reference and termination time
+- **Added Unsubscribe handler** for complete subscription lifecycle management
+- **Enhanced SOAP namespace support** with wsnt and wsa5 namespace declarations
+- **Eliminated "Unsupported action" warnings** for all event subscription operations
+- **Fixed HTTP request reading** to handle large SOAP requests with Content-Length parsing
+- **Achieved complete professional NVR integration** with full event subscription cycle
+
+#### ONVIF Specification Compliance
+- **Implemented ONVIF-compliant SubscriptionReference** with ReferenceParameters structure
+- **Added proper SubscriptionId handling** per ONVIF Application Programmer's Guide
+- **Enhanced UnsubscribeResponse format** with explicit namespace declarations
+- **Aligned with WS-BaseNotification standard** for enterprise NVR compatibility
+- **Followed ONVIF APG examples** for professional event subscription handling
+
+#### Dynamic Configuration Implementation
+- **Replaced hardcoded IP addresses and ports** with dynamic detection using `get_device_ip_address()`
+- **Added proper timestamp generation** using system time with ISO 8601 format
+- **Implemented graceful fallbacks** for configuration access and IP detection
+- **Enhanced subscription lifecycle** with proper termination time calculation
+- **Improved embedded device compatibility** with minimal resource usage
+
 #### Code Optimization
 - **Refactored UUID generation** to use common utility function
 - **Removed duplicate code** from `onvif_services.c` and `onvif_discovery.c`

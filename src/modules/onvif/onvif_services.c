@@ -42,7 +42,7 @@ static char* extract_soap_action_from_body(const char* request);
 /* ONVIF SOAP response templates */
 static const char* soap_envelope_header =
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-    "<SOAP-ENV:Envelope xmlns:SOAP-ENV=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" xmlns:tds=\"http://www.onvif.org/ver10/device/wsdl\" xmlns:trt=\"http://www.onvif.org/ver10/media/wsdl\" xmlns:tt=\"http://www.onvif.org/ver10/schema\">"
+    "<SOAP-ENV:Envelope xmlns:SOAP-ENV=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" xmlns:wsa5=\"http://www.w3.org/2005/08/addressing\" xmlns:tds=\"http://www.onvif.org/ver10/device/wsdl\" xmlns:trt=\"http://www.onvif.org/ver10/media/wsdl\" xmlns:tt=\"http://www.onvif.org/ver10/schema\" xmlns:tptz=\"http://www.onvif.org/ver20/ptz/wsdl\" xmlns:timg=\"http://www.onvif.org/ver20/imaging/wsdl\" xmlns:ter=\"http://www.onvif.org/ver10/error\" xmlns:tev=\"http://www.onvif.org/ver10/events/wsdl\" xmlns:wsnt=\"http://docs.oasis-open.org/wsn/b-2\">"
     "<SOAP-ENV:Header>"
     "<wsa:Action>%s</wsa:Action>"
     "<wsa:MessageID>urn:uuid:%s</wsa:MessageID>"
@@ -97,22 +97,57 @@ static char* extract_soap_action_from_body(const char* request)
     /* Look for SOAP action in the XML body */
     const char* body_start = strstr(request, "\r\n\r\n");
     if (!body_start) {
+        IMP_LOG_DBG(TAG, "No body separator found in request");
         return NULL;
     }
     body_start += 4;
 
-    /* Find the first element after SOAP envelope */
-    const char* action_start = strstr(body_start, "<tds:");
-    if (!action_start) {
-        action_start = strstr(body_start, "<trt:");
+    IMP_LOG_DBG(TAG, "Extracting SOAP action from body");
+
+    /* Find the SOAP Body section first */
+    const char* body_section = strstr(body_start, "<SOAP-ENV:Body>");
+    if (!body_section) {
+        body_section = strstr(body_start, "<soap:Body>");
+        if (!body_section) {
+            IMP_LOG_DBG(TAG, "No SOAP Body section found");
+            return NULL;
+        }
     }
-    if (!action_start) {
-        action_start = strstr(body_start, "<ter:");
+
+    /* Find the first namespaced element inside the SOAP Body (wildcard approach) */
+    const char* action_start = NULL;
+    const char* search_pos = body_section;
+
+    while ((search_pos = strchr(search_pos, '<')) != NULL) {
+        search_pos++; /* Skip the '<' */
+
+        /* Skip whitespace */
+        while (*search_pos == ' ' || *search_pos == '\t' || *search_pos == '\n' || *search_pos == '\r') {
+            search_pos++;
+        }
+
+        /* Skip SOAP-ENV and soap elements */
+        if (strncmp(search_pos, "SOAP-ENV:", 9) == 0 || strncmp(search_pos, "soap:", 5) == 0) {
+            continue;
+        }
+
+        /* Check if this is a namespaced element (contains ':' before '>' or space) */
+        const char* colon_pos = strchr(search_pos, ':');
+        const char* end_pos = strpbrk(search_pos, "> \t\n\r");
+
+        if (colon_pos && end_pos && colon_pos < end_pos) {
+            /* Found a namespaced action element */
+            action_start = search_pos - 1; /* Include the '<' */
+            break;
+        }
     }
 
     if (!action_start) {
+        IMP_LOG_DBG(TAG, "No namespaced action element found in SOAP body");
         return NULL;
     }
+
+    IMP_LOG_DBG(TAG, "Found ONVIF action element at: %.50s", action_start);
 
     /* Extract the action name */
     const char* name_start = strchr(action_start, ':');
@@ -121,8 +156,13 @@ static char* extract_soap_action_from_body(const char* request)
     }
     name_start++;
 
-    const char* name_end = strchr(name_start, '>');
-    if (!name_end) {
+    /* Find the end of the action name - could be '>', ' ', or '/' */
+    const char* name_end = name_start;
+    while (*name_end && *name_end != '>' && *name_end != ' ' && *name_end != '/') {
+        name_end++;
+    }
+
+    if (name_end == name_start) {
         return NULL;
     }
 
@@ -143,6 +183,7 @@ extern int safe_send(int socket, const void* data, size_t len);
 
 /* Function declarations */
 static void handle_get_capabilities(int client_socket);
+static void handle_get_services(int client_socket);
 static void handle_get_device_information(int client_socket);
 static void handle_get_device_service_capabilities(int client_socket);
 static void handle_get_media_service_capabilities(int client_socket);
@@ -156,6 +197,9 @@ static void handle_get_video_sources_alt(int client_socket);
 static void handle_system_reboot(int client_socket);
 static void handle_imaging_get_options(int client_socket);
 static void handle_ptz_get_service_capabilities(int client_socket);
+static void handle_event_get_service_capabilities(int client_socket);
+static void handle_event_subscribe(int client_socket);
+static void handle_event_unsubscribe(int client_socket);
 
 /* Handle GetSystemDateAndTime request */
 static void handle_get_system_date_and_time(int client_socket)
@@ -474,6 +518,141 @@ static void handle_ptz_get_service_capabilities(int client_socket)
     IMP_LOG_INFO(TAG, "Sent PTZ GetServiceCapabilities response: %d bytes", sent);
 }
 
+/* Handle Event GetServiceCapabilities request */
+static void handle_event_get_service_capabilities(int client_socket)
+{
+    char uuid[37];
+    char body[1024];
+
+    generate_uuid(uuid, sizeof(uuid));
+    IMP_LOG_INFO(TAG, "Handling Event GetServiceCapabilities request");
+
+    /* Create response body with event service capabilities */
+    snprintf(body, sizeof(body),
+        "<tev:GetServiceCapabilitiesResponse>"
+         "<tev:Capabilities>"
+          "<tev:WSSubscriptionPolicySupport>false</tev:WSSubscriptionPolicySupport>"
+          "<tev:WSPullPointSupport>false</tev:WSPullPointSupport>"
+          "<tev:WSPausableSubscriptionManagerInterfaceSupport>false</tev:WSPausableSubscriptionManagerInterfaceSupport>"
+          "<tev:MaxNotificationProducers>0</tev:MaxNotificationProducers>"
+          "<tev:MaxPullPoints>0</tev:MaxPullPoints>"
+          "<tev:PersistentNotificationStorage>false</tev:PersistentNotificationStorage>"
+         "</tev:Capabilities>"
+        "</tev:GetServiceCapabilitiesResponse>");
+
+    /* Use the helper function to send the SOAP response */
+    int sent = 0;
+    send_soap_response(client_socket,
+                      "http://www.onvif.org/ver10/events/wsdl/GetServiceCapabilitiesResponse",
+                      uuid,
+                      body,
+                      &sent);
+
+    /* Log the response */
+    IMP_LOG_INFO(TAG, "Sent Event GetServiceCapabilities response: %d bytes", sent);
+}
+
+/* Handle Event Subscribe request */
+static void handle_event_subscribe(int client_socket)
+{
+    char uuid[37];
+    char subscription_uuid[37];
+    char body[1024];
+
+    generate_uuid(uuid, sizeof(uuid));
+    generate_uuid(subscription_uuid, sizeof(subscription_uuid));
+    IMP_LOG_INFO(TAG, "Handling Event Subscribe request");
+
+    /* Get dynamic server information */
+    extern streamer_config_t* g_config;
+    char device_ip[64];
+    char server_address[256];
+
+    /* Get actual device IP address dynamically */
+    if (get_device_ip_address(device_ip, sizeof(device_ip)) != 0) {
+        /* Fallback to configured IP if detection fails */
+        if (g_config && strlen(g_config->general.server_ip) > 0) {
+            strncpy(device_ip, g_config->general.server_ip, sizeof(device_ip) - 1);
+            device_ip[sizeof(device_ip) - 1] = '\0';
+        } else {
+            strcpy(device_ip, "127.0.0.1"); /* Ultimate fallback */
+        }
+    }
+
+    int http_port = (g_config && g_config->general.http_port > 0) ? g_config->general.http_port : 8080;
+    snprintf(server_address, sizeof(server_address), "http://%s:%d/onvif/event_service",
+             device_ip, http_port);
+
+    /* Get current time and calculate termination time (2 minutes from now) */
+    time_t current_time = time(NULL);
+    time_t termination_time = current_time + 120; /* 2 minutes */
+
+    struct tm *current_tm = gmtime(&current_time);
+    struct tm *termination_tm = gmtime(&termination_time);
+
+    char current_time_str[32];
+    char termination_time_str[32];
+    strftime(current_time_str, sizeof(current_time_str), "%Y-%m-%dT%H:%M:%SZ", current_tm);
+    strftime(termination_time_str, sizeof(termination_time_str), "%Y-%m-%dT%H:%M:%SZ", termination_tm);
+
+    /* Create response body with subscription reference (ONVIF compliant format) */
+    snprintf(body, sizeof(body),
+        "<wsnt:SubscribeResponse>"
+         "<wsnt:SubscriptionReference>"
+          "<wsa5:Address>%s</wsa5:Address>"
+          "<wsa5:ReferenceParameters>"
+           "<SubscriptionId xmlns=\"http://www.onvif.org/ver10/events/wsdl\">%s</SubscriptionId>"
+          "</wsa5:ReferenceParameters>"
+         "</wsnt:SubscriptionReference>"
+         "<wsnt:CurrentTime>%s</wsnt:CurrentTime>"
+         "<wsnt:TerminationTime>%s</wsnt:TerminationTime>"
+        "</wsnt:SubscribeResponse>",
+        server_address, subscription_uuid, current_time_str, termination_time_str);
+
+    /* Use the helper function to send the SOAP response */
+    int sent = 0;
+    send_soap_response(client_socket,
+                      "http://docs.oasis-open.org/wsn/bw-2/NotificationProducer/SubscribeResponse",
+                      uuid,
+                      body,
+                      &sent);
+
+    /* Log the response */
+    IMP_LOG_INFO(TAG, "Sent Event Subscribe response: %d bytes (subscription: %s)", sent, subscription_uuid);
+}
+
+/* Handle Event Unsubscribe request */
+static void handle_event_unsubscribe(int client_socket)
+{
+    char uuid[37];
+    char body[512];
+
+    generate_uuid(uuid, sizeof(uuid));
+
+    /* Log timing information to detect patterns */
+    static uint32_t last_unsubscribe_time = 0;
+    uint32_t current_time = get_monotonic_time_us() / 1000000; /* Convert to seconds */
+    uint32_t time_since_last = current_time - last_unsubscribe_time;
+
+    IMP_LOG_INFO(TAG, "Handling Event Unsubscribe request (time since last: %u seconds)", time_since_last);
+    last_unsubscribe_time = current_time;
+
+    /* Create response body for unsubscribe (minimal ONVIF compliant format) */
+    snprintf(body, sizeof(body),
+        "<wsnt:UnsubscribeResponse/>");
+
+    /* Use the helper function to send the SOAP response */
+    int sent = 0;
+    send_soap_response(client_socket,
+                      "http://docs.oasis-open.org/wsn/bw-2/SubscriptionManager/UnsubscribeResponse",
+                      uuid,
+                      body,
+                      &sent);
+
+    /* Log the response */
+    IMP_LOG_INFO(TAG, "Sent Event Unsubscribe response: %d bytes", sent);
+}
+
 /* Handle GetServiceCapabilities request */
 static void handle_get_service_capabilities(int client_socket)
 {
@@ -627,8 +806,16 @@ void onvif_module_handle_request(int client_socket, const char* request, void* s
         return;
     }
 
-    /* Check authentication */
-    auth_result_t auth_result = auth_check_onvif_request(request, &onvif_config->auth, &client_info);
+    /* Check if this is GetSystemDateAndTime - which should not require authentication per ONVIF spec */
+    bool is_get_system_date_time = strstr(request, "<tds:GetSystemDateAndTime") != NULL;
+
+    /* Check authentication (skip for GetSystemDateAndTime) */
+    auth_result_t auth_result = AUTH_RESULT_SUCCESS;
+    if (!is_get_system_date_time) {
+        auth_result = auth_check_onvif_request(request, &onvif_config->auth, &client_info);
+    } else {
+        IMP_LOG_DBG(TAG, "GetSystemDateAndTime request - bypassing authentication per ONVIF spec");
+    }
 
     if (auth_result == AUTH_RESULT_REQUIRED) {
         /* Send 401 Unauthorized with WWW-Authenticate header */
@@ -664,7 +851,9 @@ void onvif_module_handle_request(int client_socket, const char* request, void* s
     }
 
     /* Authentication successful or not required */
-    if (auth_is_required(&onvif_config->auth, &client_info)) {
+    if (is_get_system_date_time) {
+        IMP_LOG_INFO(TAG, "GetSystemDateAndTime request from %s (no auth required)", client_info.ip_string);
+    } else if (auth_is_required(&onvif_config->auth, &client_info)) {
         IMP_LOG_INFO(TAG, "Authenticated ONVIF request from %s", client_info.ip_string);
     } else {
         IMP_LOG_DBG(TAG, "Localhost bypass for ONVIF client %s", client_info.ip_string);
@@ -700,7 +889,7 @@ void onvif_module_handle_request(int client_socket, const char* request, void* s
         /* Log request body (truncated if too long) */
         const char* body = headers_end + 4; // Skip "\r\n\r\n"
         if (strlen(body) > 0) {
-            char body_excerpt[512] = {0};
+            char body_excerpt[5120] = {0};
             strncpy(body_excerpt, body, sizeof(body_excerpt) - 1);
             IMP_LOG_DBG(TAG, "ONVIF request body (excerpt):\n%s", body_excerpt);
         }
@@ -753,7 +942,7 @@ void onvif_module_handle_request(int client_socket, const char* request, void* s
 
     /* If we couldn't extract from headers, try to extract from XML body */
     if (!soap_action) {
-        soap_action = extract_soap_action(request);
+        soap_action = extract_soap_action_from_body(request);
         if (soap_action) {
             IMP_LOG_INFO(TAG, "ONVIF SOAP Action (from body): %s", soap_action);
         }
@@ -779,7 +968,7 @@ void onvif_module_handle_request(int client_socket, const char* request, void* s
         strstr(request, "POST /onvif/event_service") != NULL ||
         strstr(request, "POST /onvif") != NULL) {
 
-        char* action = extract_soap_action(request);
+        char* action = extract_soap_action_from_body(request);
         if (!action && soap_action) {
             action = soap_action;
         }
@@ -808,6 +997,8 @@ void onvif_module_handle_request(int client_socket, const char* request, void* s
             handle_get_snapshot_uri(client_socket);
         } else if (strstr(action, "GetCapabilities") != NULL) {
             handle_get_capabilities(client_socket);
+        } else if (strstr(action, "GetServices") != NULL) {
+            handle_get_services(client_socket);
         } else if (strstr(action, "GetSystemDateAndTime") != NULL) {
             handle_get_system_date_and_time(client_socket);
         } else if (strstr(action, "GetVideoSources") != NULL ||
@@ -831,6 +1022,8 @@ void onvif_module_handle_request(int client_socket, const char* request, void* s
                 handle_get_device_service_capabilities(client_socket);
             } else if (strstr(request, "POST /onvif/ptz_service") != NULL) {
                 handle_ptz_get_service_capabilities(client_socket);
+            } else if (strstr(request, "POST /onvif/event_service") != NULL) {
+                handle_event_get_service_capabilities(client_socket);
             } else {
                 /* Generic service capabilities */
                 handle_get_service_capabilities(client_socket);
@@ -839,6 +1032,10 @@ void onvif_module_handle_request(int client_socket, const char* request, void* s
             handle_system_reboot(client_socket);
         } else if (strstr(action, "GetOptions") != NULL && strstr(request, "/onvif/imaging_service") != NULL) {
             handle_imaging_get_options(client_socket);
+        } else if (strstr(action, "Subscribe") != NULL) {
+            handle_event_subscribe(client_socket);
+        } else if (strstr(action, "Unsubscribe") != NULL) {
+            handle_event_unsubscribe(client_socket);
         } else {
             /* Unsupported action */
             IMP_LOG_WARN(TAG, "Unsupported ONVIF action: %s", action);
@@ -911,6 +1108,69 @@ static void handle_get_capabilities(int client_socket)
     IMP_LOG_INFO(TAG, "Sent GetCapabilities response: %d bytes", sent);
 }
 
+/* Handle GetServices request */
+static void handle_get_services(int client_socket)
+{
+    char uuid[37];
+    char body[2048];
+
+    generate_uuid(uuid, sizeof(uuid));
+    IMP_LOG_INFO(TAG, "Handling GetServices request");
+
+    /* Get server IP and port from global config */
+    const char* server_ip = g_config->general.server_ip;
+    int http_port = g_config->general.http_port;
+
+    /* Create response body with available services */
+    snprintf(body, sizeof(body),
+        "<tds:GetServicesResponse>"
+         "<tds:Service>"
+          "<tds:Namespace>http://www.onvif.org/ver10/device/wsdl</tds:Namespace>"
+          "<tds:XAddr>http://%s:%d/onvif/device_service</tds:XAddr>"
+          "<tds:Version>"
+           "<tt:Major>2</tt:Major>"
+           "<tt:Minor>0</tt:Minor>"
+          "</tds:Version>"
+         "</tds:Service>"
+         "<tds:Service>"
+          "<tds:Namespace>http://www.onvif.org/ver10/media/wsdl</tds:Namespace>"
+          "<tds:XAddr>http://%s:%d/onvif/media_service</tds:XAddr>"
+          "<tds:Version>"
+           "<tt:Major>2</tt:Major>"
+           "<tt:Minor>0</tt:Minor>"
+          "</tds:Version>"
+         "</tds:Service>"
+         "<tds:Service>"
+          "<tds:Namespace>http://www.onvif.org/ver10/events/wsdl</tds:Namespace>"
+          "<tds:XAddr>http://%s:%d/onvif/event_service</tds:XAddr>"
+          "<tds:Version>"
+           "<tt:Major>2</tt:Major>"
+           "<tt:Minor>0</tt:Minor>"
+          "</tds:Version>"
+         "</tds:Service>"
+         "<tds:Service>"
+          "<tds:Namespace>http://www.onvif.org/ver20/imaging/wsdl</tds:Namespace>"
+          "<tds:XAddr>http://%s:%d/onvif/imaging_service</tds:XAddr>"
+          "<tds:Version>"
+           "<tt:Major>2</tt:Major>"
+           "<tt:Minor>0</tt:Minor>"
+          "</tds:Version>"
+         "</tds:Service>"
+        "</tds:GetServicesResponse>",
+        server_ip, http_port, server_ip, http_port, server_ip, http_port, server_ip, http_port);
+
+    /* Use the helper function to send the SOAP response */
+    int sent = 0;
+    send_soap_response(client_socket,
+                      "http://www.onvif.org/ver10/device/wsdl/GetServicesResponse",
+                      uuid,
+                      body,
+                      &sent);
+
+    /* Log the response */
+    IMP_LOG_INFO(TAG, "Sent GetServices response: %d bytes", sent);
+}
+
 /* Handle GetVideoSources request (alternative implementation) */
 static void handle_get_video_sources_alt(int client_socket) {
     char uuid[37];
@@ -971,7 +1231,7 @@ static int get_session_timeout_seconds(void);
 /* Handle GetProfiles request */
 static void handle_get_profiles(int client_socket) {
     char uuid[37];
-    char body[2048];
+    char body[3072];
 
     generate_uuid(uuid, sizeof(uuid));
     IMP_LOG_INFO(TAG, "Handling GetProfiles request");
@@ -1062,6 +1322,7 @@ static void handle_get_profiles(int client_socket) {
            "</tt:Multicast>"
            "<tt:SessionTimeout>PT%dS</tt:SessionTimeout>"
           "</tt:VideoEncoderConfiguration>"
+
          "</trt:Profiles>"
          "<trt:Profiles fixed=\"true\" token=\"Profile_2\">"
           "<tt:Name>%s</tt:Name>"
@@ -1100,6 +1361,7 @@ static void handle_get_profiles(int client_socket) {
            "</tt:Multicast>"
            "<tt:SessionTimeout>PT%dS</tt:SessionTimeout>"
           "</tt:VideoEncoderConfiguration>"
+
          "</trt:Profiles>"
         "</trt:GetProfilesResponse>",
         main_profile_name,                                      /* Profile_1 Name */
@@ -1123,6 +1385,14 @@ static void handle_get_profiles(int client_socket) {
         g_config->general.server_ip,                            /* Profile_2 Multicast IPv4Address */
         session_timeout                                         /* Profile_2 SessionTimeout */
         );
+
+    /* Check if response was truncated */
+    size_t body_len = strlen(body);
+    if (body_len >= sizeof(body) - 1) {
+        IMP_LOG_ERR(TAG, "GetProfiles response truncated! Body length: %zu, Buffer size: %zu", body_len, sizeof(body));
+    } else {
+        IMP_LOG_DBG(TAG, "GetProfiles response body length: %zu bytes", body_len);
+    }
 
     /* Use the helper function to send the SOAP response */
     int sent = 0;
@@ -1313,9 +1583,6 @@ static void handle_get_device_service_capabilities(int client_socket) {
 /* Send SOAP response */
 static void send_soap_response(int client_socket, const char* action, const char* uuid, const char* body, int* sent)
 {
-    char response[2048];
-    char header[1024];
-
     /* Calculate the content length correctly */
     size_t content_length = strlen(soap_envelope_header) + strlen(body) + strlen(soap_envelope_footer);
     /* Add the length of the action and message ID strings that will be formatted into the header */
@@ -1324,12 +1591,12 @@ static void send_soap_response(int client_socket, const char* action, const char
     content_length -= 4;
 
     /* Build complete SOAP response */
-    char soap_response[4096];
+    char soap_response[8192];
     snprintf(soap_response, sizeof(soap_response), "%s%s%s",
              soap_envelope_header, body, soap_envelope_footer);
 
     /* Format the header part with action and UUID */
-    char formatted_response[4096];
+    char formatted_response[8192];
     snprintf(formatted_response, sizeof(formatted_response), soap_response, action, uuid);
 
     /* Send SOAP response using HTTP utility */

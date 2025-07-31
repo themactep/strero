@@ -362,14 +362,25 @@ static int parse_ws_security_token(const char* request, char* username, char* pa
         return -1;
     }
 
-    /* Look for Username element */
+    /* Look for Username element - handle both namespaced and non-namespaced */
     const char* username_start = strstr(request, "<Username>");
-    if (!username_start) {
+    const char* username_ns_start = strstr(request, "<wsse:Username>");
+
+    if (username_ns_start && (!username_start || username_ns_start < username_start)) {
+        username_start = username_ns_start + 15; /* Skip "<wsse:Username>" */
+    } else if (username_start) {
+        username_start += 10; /* Skip "<Username>" */
+    } else {
         return -1;
     }
-    username_start += 10; /* Skip "<Username>" */
 
     const char* username_end = strstr(username_start, "</Username>");
+    const char* username_ns_end = strstr(username_start, "</wsse:Username>");
+
+    if (username_ns_end && (!username_end || username_ns_end < username_end)) {
+        username_end = username_ns_end;
+    }
+
     if (!username_end) {
         return -1;
     }
@@ -404,9 +415,17 @@ auth_result_t auth_check_onvif_request(const char* request, const auth_config_t*
         return AUTH_RESULT_SUCCESS;
     }
 
-    /* First try WS-Security authentication */
-    if (strstr(request, "<Security") && strstr(request, "<UsernameToken")) {
+    /* First try WS-Security authentication - check for both namespaced and non-namespaced elements */
+    IMP_LOG_DBG(TAG, "Checking for WS-Security elements in request");
+    bool has_security = strstr(request, "<Security") || strstr(request, "<wsse:Security");
+    bool has_username_token = strstr(request, "<UsernameToken") || strstr(request, "<wsse:UsernameToken");
+
+    IMP_LOG_DBG(TAG, "WS-Security detection: has_security=%s, has_username_token=%s",
+                has_security ? "true" : "false", has_username_token ? "true" : "false");
+
+    if (has_security && has_username_token) {
         char ws_username[64], ws_password[64];
+        IMP_LOG_DBG(TAG, "Attempting to parse WS-Security token");
         if (parse_ws_security_token(request, ws_username, ws_password) == 0) {
             /* For WS-Security, we only validate the username for now
              * Full digest validation would require implementing the WS-Security spec */
@@ -414,9 +433,12 @@ auth_result_t auth_check_onvif_request(const char* request, const auth_config_t*
                 IMP_LOG_DBG(TAG, "WS-Security authentication successful for user: %s", ws_username);
                 return AUTH_RESULT_SUCCESS;
             } else {
-                IMP_LOG_WARN(TAG, "WS-Security authentication failed: username mismatch");
+                IMP_LOG_WARN(TAG, "WS-Security authentication failed: username mismatch (expected: %s, got: %s)",
+                            config->username, ws_username);
                 return AUTH_RESULT_INVALID;
             }
+        } else {
+            IMP_LOG_WARN(TAG, "Failed to parse WS-Security token");
         }
     }
 
