@@ -1,9 +1,15 @@
 #!/bin/bash
 
-THINGINO_DIR=/home/paul/dev/thingino-dev
-OVERRIDES_DIR=/home/paul/dev/thingino-streamer
-OUTPUT_DIR=/home/paul/output-dev/wyze_cam3_t31x_gc2053_rtl8189ftv
-SHARE_DIR=/home/paul/nfs
+BOARD=$1
+if [[ -z "$BOARD" ]]; then
+	echo "$0 <camera_name>"
+	exit 1
+fi
+
+THINGINO_DIR=$HOME/dev/thingino-firmware
+OVERRIDES_DIR=$HOME/dev/thingino-streamer
+OUTPUT_DIR=$HOME/output-dev/$BOARD
+SHARE_DIR=$HOME/nfs
 
 BUILDROOT_PACKAGE_DIR=$THINGINO_DIR/package/thingino-streamer
 
@@ -21,7 +27,7 @@ rm -f $OUTPUT_DIR/.config*
 
 # Build
 cd $THINGINO_DIR
-BOARD=wyze_cam3_t31x_gc2053_rtl8189ftv make rebuild-thingino-streamer | tee $BUILD_LOG_FILE
+BOARD=$BOARD make rebuild-thingino-streamer | tee $BUILD_LOG_FILE
 
 # Copy streamer binary and configs to share dir
 cp $TARGET_PACKAGE_DIR/usr/bin/streamer $SHARE_DIR/streamer
@@ -30,3 +36,4 @@ cp $OVERRIDES_DIR/res/config/*.json $SHARE_DIR/
 
 # Go back to overrides dir
 cd $OVERRIDES_DIR
+
