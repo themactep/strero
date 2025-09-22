@@ -203,11 +203,15 @@ static int apply_imp_params(const imp_control_params_t* params)
     }
 
     /* Set Priority 1 extensions */
+#if defined(PLATFORM_T31)
     ret = IMP_ISP_Tuning_SetBcshHue(params->hue);
     if (ret < 0) {
         IMP_LOG_ERR(TAG, "Failed to set hue to %d: %d", params->hue, ret);
         return -1;
     }
+#else
+    (void)ret;
+#endif
 
     ret = IMP_ISP_Tuning_SetAeComp(params->ae_compensation);
     if (ret < 0) {
@@ -266,11 +270,13 @@ static int apply_imp_params(const imp_control_params_t* params)
     }
 
     /* Set backlight compensation */
+#if defined(PLATFORM_T31)
     ret = IMP_ISP_Tuning_SetBacklightComp(params->backlight_compensation);
     if (ret < 0) {
         IMP_LOG_ERR(TAG, "Failed to set backlight compensation to %d: %d", params->backlight_compensation, ret);
         return -1;
     }
+#endif
 
     /* Set highlight suppression */
     ret = IMP_ISP_Tuning_SetHiLightDepress(params->highlight_suppression);
@@ -298,19 +304,23 @@ static int apply_imp_params(const imp_control_params_t* params)
     }
 
     /* Set DRC strength */
+#if defined(PLATFORM_T31)
     ret = IMP_ISP_Tuning_SetDRC_Strength(params->drc_strength);
     if (ret < 0) {
         IMP_LOG_ERR(TAG, "Failed to set DRC strength to %d: %d", params->drc_strength, ret);
         return -1;
     }
+#endif
 
     /* Set defog strength */
+#if defined(PLATFORM_T31)
     unsigned char defog_val = params->defog_strength;
     ret = IMP_ISP_Tuning_SetDefog_Strength(&defog_val);
     if (ret < 0) {
         IMP_LOG_ERR(TAG, "Failed to set defog strength to %d: %d", params->defog_strength, ret);
         return -1;
     }
+#endif
 
     IMP_LOG_INFO(TAG, "Successfully applied all IMP parameters");
     return 0;
@@ -347,11 +357,15 @@ static int get_current_imp_params(imp_control_params_t* params)
     }
 
     /* Get Priority 1 extensions */
+#if defined(PLATFORM_T31)
     ret = IMP_ISP_Tuning_GetBcshHue(&params->hue);
     if (ret < 0) {
         IMP_LOG_ERR(TAG, "Failed to get hue: %d", ret);
         return -1;
     }
+#else
+    params->hue = g_imp_control_state.current_params.hue;
+#endif
 
     int ae_comp;
     ret = IMP_ISP_Tuning_GetAeComp(&ae_comp);
@@ -383,6 +397,7 @@ static int get_current_imp_params(imp_control_params_t* params)
     params->anti_flicker = g_imp_control_state.current_params.anti_flicker;
 
     /* Get backlight compensation */
+#if defined(PLATFORM_T31)
     int backlight_comp;
     ret = IMP_ISP_Tuning_GetBacklightComp(&backlight_comp);
     if (ret < 0) {
@@ -391,8 +406,12 @@ static int get_current_imp_params(imp_control_params_t* params)
     } else {
         params->backlight_compensation = (unsigned char)backlight_comp;
     }
+#else
+    params->backlight_compensation = g_imp_control_state.current_params.backlight_compensation;
+#endif
 
     /* Get highlight suppression */
+#if defined(PLATFORM_T31)
     int highlight_suppress;
     ret = IMP_ISP_Tuning_GetHiLightDepress(&highlight_suppress);
     if (ret < 0) {
@@ -401,6 +420,9 @@ static int get_current_imp_params(imp_control_params_t* params)
     } else {
         params->highlight_suppression = (unsigned char)highlight_suppress;
     }
+#else
+    params->highlight_suppression = g_imp_control_state.current_params.highlight_suppression;
+#endif
 
     /* Get white balance */
     IMPISPWB wb_attr;
