@@ -92,11 +92,7 @@ static void rtsp_frame_callback(rtsp_server_t* server, void* user_data)
 
     /* Process frames for each enabled channel */
     for (int i = 0; i < FS_CHN_NUM; i++) {
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
         if (!chn[i].enable || chn[i].payloadType == PT_JPEG) {
-#else
-        if (!chn[i].enable || chn[i].payloadType == IMP_ENC_PROFILE_JPEG) {
-#endif
             // if (callback_count <= 3) {
             //     IMP_LOG_INFO(TAG, "Skipping channel %d: enabled=%s, payloadType=%d",
             //                 i, chn[i].enable ? "true" : "false", chn[i].payloadType);
@@ -134,28 +130,21 @@ static void rtsp_frame_callback(rtsp_server_t* server, void* user_data)
          * The encoder is already configured with the correct frame rate and
          * adding another layer of rate limiting causes timing conflicts */
 
-        /* Poll for frames using native IMP buffering with frame-rate appropriate timeout */
-        int ret = IMP_Encoder_PollingStream(i, frame_interval_ms);
+        /* Poll via HAL with frame-rate appropriate timeout */
+        int ret = hal_stream_poll(i, frame_interval_ms);
         if (ret >= 0) {
-#if defined(PLATFORM_T31)
-            /* HAL-backed T31 path: assemble contiguous buffer from packs */
             hal_stream_t hs = {0};
             ret = hal_stream_get(i, &hs, 1);
             if (ret >= 0) {
                 uint32_t frame_size = 0;
                 int packCount = hal_stream_pack_count(&hs);
-                for (int j = 0; j < packCount; j++) {
-                    frame_size += hal_stream_pack_length(&hs, j);
-                }
+                for (int j = 0; j < packCount; j++) frame_size += hal_stream_pack_length(&hs, j);
 
-                struct timeval encoder_timestamp;
+                struct timeval encoder_timestamp = {0};
                 if (packCount > 0) {
                     uint64_t ts = hal_stream_pack_timestamp_us(&hs, 0);
                     encoder_timestamp.tv_sec = ts / 1000000;
                     encoder_timestamp.tv_usec = ts % 1000000;
-                } else {
-                    encoder_timestamp.tv_sec = 0;
-                    encoder_timestamp.tv_usec = 0;
                 }
 
                 static uint8_t* frame_buf = NULL;
@@ -174,9 +163,7 @@ static void rtsp_frame_callback(rtsp_server_t* server, void* user_data)
                 }
 
                 uint32_t offset = 0;
-                for (int j = 0; j < packCount; j++) {
-                    offset += hal_stream_copy_pack(&hs, j, frame_buf + offset);
-                }
+                for (int j = 0; j < packCount; j++) offset += hal_stream_copy_pack(&hs, j, frame_buf + offset);
 
                 rtsp_server_send_frame(server, i, frame_buf, frame_size, &encoder_timestamp);
                 module_rtsp_frame_callback_all(server, i, frame_buf, frame_size, &encoder_timestamp);
@@ -190,59 +177,6 @@ static void rtsp_frame_callback(rtsp_server_t* server, void* user_data)
                 metrics_update_stream_frame(i, 0, true);
 #endif
             }
-#else
-            IMPEncoderStream stream;
-            ret = IMP_Encoder_GetStream(i, &stream, 1);
-            if (ret >= 0) {
-                /* Calculate frame size */
-                uint32_t frame_size = 0;
-                for (int j = 0; j < stream.packCount; j++) {
-                    frame_size += stream.pack[j].length;
-                }
-
-                /* Create timestamp */
-                struct timeval encoder_timestamp;
-                encoder_timestamp.tv_sec = (stream.packCount > 0) ? stream.pack[0].timestamp / 1000000 : 0;
-                encoder_timestamp.tv_usec = (stream.packCount > 0) ? stream.pack[0].timestamp % 1000000 : 0;
-
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-                /* T23/T20: stitch packs into a contiguous buffer */
-                static uint8_t* frame_buf = NULL;
-                static uint32_t frame_buf_cap = 0;
-                if (frame_buf_cap < frame_size) {
-                    uint8_t* new_buf = (uint8_t*)realloc(frame_buf, frame_size);
-                    if (!new_buf) {
-                        IMP_Encoder_ReleaseStream(i, &stream);
-                        goto next_channel;
-                    }
-                    frame_buf = new_buf;
-                    frame_buf_cap = frame_size;
-                }
-                uint32_t offset = 0;
-                for (int j = 0; j < stream.packCount; j++) {
-                    memcpy(frame_buf + offset, (void*)stream.pack[j].virAddr, stream.pack[j].length);
-                    offset += stream.pack[j].length;
-                }
-                rtsp_server_send_frame(server, i, frame_buf, frame_size, &encoder_timestamp);
-                module_rtsp_frame_callback_all(server, i, frame_buf, frame_size, &encoder_timestamp);
-#else
-                /* Non-T23/T20 legacy path */
-                rtsp_server_send_frame(server, i, (uint8_t*)stream.virAddr, frame_size, &encoder_timestamp);
-                module_rtsp_frame_callback_all(server, i, (uint8_t*)stream.virAddr, frame_size, &encoder_timestamp);
-#endif
-
-                /* Update stream metrics */
-#ifdef ENABLE_METRICS
-                metrics_update_stream_frame(i, frame_size, false);
-#endif
-
-                IMP_Encoder_ReleaseStream(i, &stream);
-            } else {
-#ifdef ENABLE_METRICS
-                metrics_update_stream_frame(i, 0, true);
-#endif
-            }
-#endif
         }
 
         next_channel: ;
@@ -403,12 +337,12 @@ static int setup_rtsp_server(void)
             /* Determine codec from channel configuration */
             extern struct chn_conf chn[FS_CHN_NUM];
             if (i < FS_CHN_NUM) {
-#if defined(PLATFORM_T23)
-                stream_config.codec = (chn[i].payloadType == PT_H265) ? VIDEO_CODEC_H265 : VIDEO_CODEC_H264;
-#else
-                IMPEncoderEncType enc_type = (chn[i].payloadType >> 24);
-                stream_config.codec = (enc_type == IMP_ENC_TYPE_HEVC) ? VIDEO_CODEC_H265 : VIDEO_CODEC_H264;
-#endif
+                hal_enc_attr_t a;
+                if (hal_enc_get_attr(i, &a) == 0) {
+                    stream_config.codec = (a.payload == HAL_PT_H265) ? VIDEO_CODEC_H265 : VIDEO_CODEC_H264;
+                } else {
+                    stream_config.codec = VIDEO_CODEC_H264;
+                }
             } else {
                 stream_config.codec = VIDEO_CODEC_H264; /* Default */
             }

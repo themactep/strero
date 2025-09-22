@@ -21,6 +21,8 @@
 #include "common.h"
 #include "config.h"
 #include "modules/rtsp/rtsp_module.h"
+#include "hal/imp.h"
+
 
 #define TAG "FRAME_MGR"
 
@@ -337,63 +339,68 @@ static int process_frame_from_encoder(int channel)
         polling_timeout_ms = polling_timeout_ms / 2; /* Half the timeout for more frequent polling */
     }
 
-    /* Poll for frame from encoder */
-    int ret = IMP_Encoder_PollingStream(channel, polling_timeout_ms);
-    if (ret < 0) {
-        return -1; /* No frame available or error */
+    /* Poll via HAL */
+    int ret = hal_stream_poll(channel, polling_timeout_ms);
+    if (ret < 0) return -1; /* No frame available or error */
+
+    hal_stream_t hs = {0};
+    ret = hal_stream_get(channel, &hs, 1);
+    if (ret < 0) return -1;
+
+    /* Compute total size */
+    uint32_t frame_size = 0;
+    int packCount = hal_stream_pack_count(&hs);
+    for (int i = 0; i < packCount; i++) frame_size += hal_stream_pack_length(&hs, i);
+
+    /* Prepare buffer per-channel */
+    static uint8_t *buf[FS_CHN_NUM] = {0};
+    static uint32_t cap[FS_CHN_NUM] = {0};
+    if (cap[channel] < frame_size) {
+        uint8_t *nb = (uint8_t*)realloc(buf[channel], frame_size);
+        if (!nb) { hal_stream_release(channel, &hs); return -1; }
+        buf[channel] = nb; cap[channel] = frame_size;
     }
 
-    /* Get the frame */
-    IMPEncoderStream stream;
-    ret = IMP_Encoder_GetStream(channel, &stream, 1); /* Non-blocking */
-    if (ret < 0) {
-        return -1;
+    /* Copy packs */
+    uint32_t offset = 0;
+    for (int i = 0; i < packCount; i++) offset += hal_stream_copy_pack(&hs, i, buf[channel] + offset);
+
+    /* Timestamp */
+    struct timeval tv = {0};
+    if (packCount > 0) {
+        uint64_t ts = hal_stream_pack_timestamp_us(&hs, 0);
+        tv.tv_sec = ts / 1000000; tv.tv_usec = ts % 1000000;
     }
 
-    /* Process each packet in the stream */
-    for (int i = 0; i < stream.packCount; i++) {
-        IMPEncoderPack* pack = &stream.pack[i];
+    /* Sequence counter per channel */
+    static uint32_t seq[FS_CHN_NUM] = {0};
 
-        /* Create frame info */
-        frame_info_t frame = {0};
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-        frame.data = (uint8_t*)pack->virAddr;
-#else
-        frame.data = (uint8_t*)stream.virAddr + pack->offset;
-#endif
-        frame.size = pack->length;
-        frame.channel = channel;
+    /* Create frame info */
+    frame_info_t frame = (frame_info_t){0};
+    frame.data = buf[channel];
+    frame.size = frame_size;
+    frame.channel = channel;
+    frame.timestamp = tv;
+    frame.sequence = ++seq[channel];
+    frame.type = detect_frame_type(frame.data, frame.size);
+    frame.is_keyframe = is_keyframe(frame.type);
 
-        /* Convert timestamp from microseconds to timeval */
-        frame.timestamp.tv_sec = pack->timestamp / 1000000;
-        frame.timestamp.tv_usec = pack->timestamp % 1000000;
+    /* Extract params and distribute */
+    extract_stream_params(&frame);
+    distribute_frame_to_consumers(&frame);
 
-        frame.sequence = stream.seq; /* Sequence is in stream, not pack */
-        frame.type = detect_frame_type(frame.data, frame.size);
-        frame.is_keyframe = is_keyframe(frame.type);
-
-        /* Extract stream parameters (SPS/PPS) if not already found */
-        extract_stream_params(&frame);
-
-        /* Distribute to consumers */
-        distribute_frame_to_consumers(&frame);
-
-        /* FIXME: Update metrics for this frame - was lost during modular refactoring */
 #ifdef ENABLE_METRICS
-        extern void metrics_update_stream_frame(int channel, unsigned int frame_size, bool is_error);
-        metrics_update_stream_frame(channel, frame.size, false);
+    extern void metrics_update_stream_frame(int channel, unsigned int frame_size, bool is_error);
+    metrics_update_stream_frame(channel, frame.size, false);
 #endif
 
-        /* Update statistics */
-        pthread_mutex_lock(&g_frame_manager.stats_mutex);
-        g_frame_manager.stats.total_frames++;
-        g_frame_manager.stats.frames_per_channel[channel]++;
-        g_frame_manager.stats.last_frame_time = get_monotonic_time_us();
-        pthread_mutex_unlock(&g_frame_manager.stats_mutex);
-    }
+    pthread_mutex_lock(&g_frame_manager.stats_mutex);
+    g_frame_manager.stats.total_frames++;
+    g_frame_manager.stats.frames_per_channel[channel]++;
+    g_frame_manager.stats.last_frame_time = get_monotonic_time_us();
+    pthread_mutex_unlock(&g_frame_manager.stats_mutex);
 
-    /* Release the stream */
-    IMP_Encoder_ReleaseStream(channel, &stream);
+    hal_stream_release(channel, &hs);
     return 0;
 }
 

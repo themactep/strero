@@ -72,12 +72,9 @@ void snapshot_fallback_set_default_config(snapshot_fallback_config_t* config)
     config->max_file_age_seconds = 3600; /* 1 hour */
 }
 
-/* Capture snapshot from channel using IMP encoder */
+/* Capture snapshot from channel using HAL (all platforms) */
 static int capture_channel_snapshot(int channel, const char* output_path)
 {
-    /* This is similar to the HTTP module's capture_snapshot function
-     * but saves directly to file instead of returning data */
-
     IMP_LOG_DBG(TAG, "Capturing snapshot for channel %d to %s", channel, output_path);
 
     /* Validate channel */
@@ -103,32 +100,23 @@ static int capture_channel_snapshot(int channel, const char* output_path)
         return -1;
     }
 
-    int ret;
-    IMPEncoderStream stream;
     int jpeg_channel = FS_CHN_NUM + channel;
 
-    /* Start receiving pictures for JPEG snapshot */
-    ret = IMP_Encoder_StartRecvPic(jpeg_channel);
-    if (ret < 0) {
-        IMP_LOG_ERR(TAG, "IMP_Encoder_StartRecvPic(%d) failed for channel %d", jpeg_channel, channel);
+    if (hal_enc_start(jpeg_channel) < 0) {
+        IMP_LOG_ERR(TAG, "StartRecvPic failed for ch%d", jpeg_channel);
         return -1;
     }
 
-    /* Poll for JPEG stream with timeout */
-    ret = IMP_Encoder_PollingStream(jpeg_channel, 1000); /* 1 second timeout */
-    if (ret < 0) {
+    if (hal_stream_poll(jpeg_channel, 1000) < 0) {
         IMP_LOG_WARN(TAG, "Polling JPEG stream timeout for channel %d", channel);
-        IMP_Encoder_StopRecvPic(jpeg_channel);
+        hal_enc_stop(jpeg_channel);
         return -1;
     }
 
-#if defined(PLATFORM_T31)
-    /* T31 path via HAL: get stream and copy packs handling wrap-around internally */
     hal_stream_t hs = {0};
-    ret = hal_stream_get(jpeg_channel, &hs, 1);
-    if (ret < 0) {
-        IMP_LOG_ERR(TAG, "HAL: Failed to get JPEG stream from channel %d: %d", channel, ret);
-        IMP_Encoder_StopRecvPic(jpeg_channel);
+    if (hal_stream_get(jpeg_channel, &hs, 1) < 0) {
+        IMP_LOG_ERR(TAG, "HAL: Failed to get JPEG stream from channel %d", channel);
+        hal_enc_stop(jpeg_channel);
         return -1;
     }
 
@@ -136,19 +124,18 @@ static int capture_channel_snapshot(int channel, const char* output_path)
     if (packCount <= 0) {
         IMP_LOG_WARN(TAG, "HAL: No JPEG data available for channel %d", channel);
         hal_stream_release(jpeg_channel, &hs);
-        IMP_Encoder_StopRecvPic(jpeg_channel);
+        hal_enc_stop(jpeg_channel);
         return -1;
     }
 
-    /* Write JPEG data to file */
     FILE* fp = fopen(output_path, "wb");
     if (!fp) {
         IMP_LOG_ERR(TAG, "Failed to open output file: %s", output_path);
         hal_stream_release(jpeg_channel, &hs);
+        hal_enc_stop(jpeg_channel);
         return -1;
     }
 
-    /* Determine maximum pack size to allocate a reusable buffer */
     uint32_t max_len = 0;
     for (int i = 0; i < packCount; i++) {
         uint32_t l = hal_stream_pack_length(&hs, i);
@@ -158,7 +145,7 @@ static int capture_channel_snapshot(int channel, const char* output_path)
     if (max_len && !buf) {
         fclose(fp);
         hal_stream_release(jpeg_channel, &hs);
-        IMP_Encoder_StopRecvPic(jpeg_channel);
+        hal_enc_stop(jpeg_channel);
         return -1;
     }
 
@@ -179,90 +166,16 @@ static int capture_channel_snapshot(int channel, const char* output_path)
 
     fclose(fp);
     hal_stream_release(jpeg_channel, &hs);
-
-    /* Stop receiving pictures */
-    IMP_Encoder_StopRecvPic(jpeg_channel);
-
-    if (total_written > 0) {
-        IMP_LOG_INFO(TAG, "Snapshot saved (HAL): %s (%zu bytes)", output_path, total_written);
-        return 0;
-    } else {
-        IMP_LOG_ERR(TAG, "No data written to snapshot file (HAL): %s", output_path);
-        unlink(output_path);
-        return -1;
-    }
-#else
-    /* Get JPEG stream from encoder */
-    ret = IMP_Encoder_GetStream(jpeg_channel, &stream, 1);
-    if (ret < 0) {
-        IMP_LOG_ERR(TAG, "Failed to get JPEG stream from channel %d: %d", channel, ret);
-        IMP_Encoder_StopRecvPic(jpeg_channel);
-        return -1;
-    }
-
-    if (stream.packCount <= 0) {
-        IMP_LOG_WARN(TAG, "No JPEG data available for channel %d", channel);
-        IMP_Encoder_ReleaseStream(jpeg_channel, &stream);
-        IMP_Encoder_StopRecvPic(jpeg_channel);
-        return -1;
-    }
-
-    /* Write JPEG data to file */
-    FILE* fp = fopen(output_path, "wb");
-    if (!fp) {
-        IMP_LOG_ERR(TAG, "Failed to open output file: %s", output_path);
-        IMP_Encoder_ReleaseStream(jpeg_channel, &stream);
-        return -1;
-    }
-
-    size_t total_written = 0;
-    for (int i = 0; i < stream.packCount; i++) {
-        IMPEncoderPack* pack = &stream.pack[i];
-        if (pack->length > 0) {
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-            /* T23/T20: pack contains direct virtual address, no wrap-around handling */
-            size_t written = fwrite((void*)pack->virAddr, 1, pack->length, fp);
-            total_written += written;
-            if (written != pack->length) {
-                IMP_LOG_WARN(TAG, "Partial write: %zu/%u bytes", written, pack->length);
-            }
-#else
-            uint32_t remSize = stream.streamSize - pack->offset;
-            if (remSize < pack->length) {
-                /* Handle wrap-around */
-                size_t written1 = fwrite((void*)(stream.virAddr + pack->offset), 1, remSize, fp);
-                size_t written2 = fwrite((void*)stream.virAddr, 1, pack->length - remSize, fp);
-                total_written += written1 + written2;
-                if (written1 + written2 != pack->length) {
-                    IMP_LOG_WARN(TAG, "Partial write: %zu/%u bytes", written1 + written2, pack->length);
-                }
-            } else {
-                /* Normal copy */
-                size_t written = fwrite((void*)(stream.virAddr + pack->offset), 1, pack->length, fp);
-                total_written += written;
-                if (written != pack->length) {
-                    IMP_LOG_WARN(TAG, "Partial write: %zu/%u bytes", written, pack->length);
-                }
-            }
-#endif
-        }
-    }
-
-    fclose(fp);
-    IMP_Encoder_ReleaseStream(jpeg_channel, &stream);
-
-    /* Stop receiving pictures */
-    IMP_Encoder_StopRecvPic(jpeg_channel);
+    hal_enc_stop(jpeg_channel);
 
     if (total_written > 0) {
         IMP_LOG_INFO(TAG, "Snapshot saved: %s (%zu bytes)", output_path, total_written);
         return 0;
     } else {
         IMP_LOG_ERR(TAG, "No data written to snapshot file: %s", output_path);
-        unlink(output_path); /* Remove empty file */
+        unlink(output_path);
         return -1;
     }
-#endif
 }
 
 /* Worker thread for periodic snapshot capture */

@@ -777,11 +777,7 @@ int rtmp_client_module_rtsp_frame_callback(struct rtsp_server* server, int chann
     }
 
     /* Only process enabled channels that are not JPEG */
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
     if (!chn[channel].enable || chn[channel].payloadType == PT_JPEG) {
-#else
-    if (!chn[channel].enable || chn[channel].payloadType == IMP_ENC_PROFILE_JPEG) {
-#endif
         return 0;
     }
 
