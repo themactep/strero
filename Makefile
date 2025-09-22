@@ -366,6 +366,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(VERSION_FILE)
 		-I$(LIBIMP_INC_DIR)/imp \
 		-I$(LIBIMP_INC_DIR)/sysutils \
 		-I./include \
+			-I./src \
 		-isystem $(THIRDPARTY_INC_DIR) \
 		-c $< -o $@
 
