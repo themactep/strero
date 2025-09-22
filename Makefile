@@ -179,8 +179,12 @@ C_SOURCES_CORE          = $(SRC_DIR)/main.c \
 # HAL sources (platform-selected)
 ifneq (,$(findstring -DPLATFORM_T31,$(CFLAGS)))
 C_SOURCES_CORE          += $(SRC_DIR)/hal/imp/imp_t31.c
+else ifneq (,$(findstring -DPLATFORM_T30,$(CFLAGS)))
+C_SOURCES_CORE          += $(SRC_DIR)/hal/imp/imp_t30.c
 else ifneq (,$(findstring -DPLATFORM_T23,$(CFLAGS)))
 C_SOURCES_CORE          += $(SRC_DIR)/hal/imp/imp_t23.c
+else ifneq (,$(findstring -DPLATFORM_T21,$(CFLAGS)))
+C_SOURCES_CORE          += $(SRC_DIR)/hal/imp/imp_t21.c
 else ifneq (,$(findstring -DPLATFORM_T20,$(CFLAGS)))
 C_SOURCES_CORE          += $(SRC_DIR)/hal/imp/imp_t20.c
 endif
@@ -406,6 +410,18 @@ t20:
 	@echo "Building for T20 hardware with T20 SDK..."
 	$(MAKE) CFLAGS="$(CFLAGS) -DPLATFORM_T20" $(TARGET)
 	@echo "Build complete: T20 hardware + T20 SDK"
+
+# Standard T21 hardware with T21 SDK
+t21:
+	@echo "Building for T21 hardware with T21 SDK..."
+	$(MAKE) CFLAGS="$(CFLAGS) -DPLATFORM_T21" $(TARGET)
+	@echo "Build complete: T21 hardware + T21 SDK"
+
+# Standard T30 hardware with T30 SDK
+t30:
+	@echo "Building for T30 hardware with T30 SDK..."
+	$(MAKE) CFLAGS="$(CFLAGS) -DPLATFORM_T30" $(TARGET)
+	@echo "Build complete: T30 hardware + T30 SDK"
 
 # Clean Build Artifacts
 # ---------------------
