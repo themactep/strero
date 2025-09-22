@@ -90,7 +90,8 @@ int hal_enc_register(int group, int ch) {
 }
 
 int hal_enc_unregister(int group, int ch) {
-    return IMP_Encoder_UnRegisterChn(group, ch);
+    (void)group; /* T31 API takes only channel */
+    return IMP_Encoder_UnRegisterChn(ch);
 }
 
 int hal_enc_start(int ch) {
@@ -137,15 +138,24 @@ int hal_enc_get_attr(int ch, hal_enc_attr_t *a) {
     a->payload = unmap_profile(attr.encAttr.eProfile);
     a->width   = attr.encAttr.uWidth;
     a->height  = attr.encAttr.uHeight;
-    a->fps.num = attr.encAttr.uNum;
-    a->fps.den = attr.encAttr.uDen;
+    a->fps.num = attr.rcAttr.outFrmRate.frmRateNum;
+    a->fps.den = attr.rcAttr.outFrmRate.frmRateDen;
     a->gop     = attr.gopAttr.uGopLength;
 
-    switch (attr.rcAttr.rcMode) {
-        case IMP_ENC_RC_MODE_FIXQP: a->rc_mode = HAL_RC_FIXQP; a->init_qp = attr.rcAttr.attrFixQp.iInitialQP; break;
-        case IMP_ENC_RC_MODE_VBR:   a->rc_mode = HAL_RC_VBR;   a->target_kbps = attr.rcAttr.attrVbr.outputBitRate / 1000u; break;
+    switch (attr.rcAttr.attrRcMode.rcMode) {
+        case IMP_ENC_RC_MODE_FIXQP:
+            a->rc_mode = HAL_RC_FIXQP;
+            a->init_qp = attr.rcAttr.attrRcMode.attrFixQp.iInitialQP;
+            break;
+        case IMP_ENC_RC_MODE_VBR:
+            a->rc_mode = HAL_RC_VBR;
+            a->target_kbps = attr.rcAttr.attrRcMode.attrVbr.uTargetBitRate / 1000u;
+            break;
         case IMP_ENC_RC_MODE_CBR:
-        default:                    a->rc_mode = HAL_RC_CBR;   a->target_kbps = attr.rcAttr.attrCbr.outputBitRate / 1000u; break;
+        default:
+            a->rc_mode = HAL_RC_CBR;
+            a->target_kbps = attr.rcAttr.attrRcMode.attrCbr.uTargetBitRate / 1000u;
+            break;
     }
     return 0;
 }
@@ -215,4 +225,3 @@ uint32_t hal_stream_copy_pack(const hal_stream_t *s, int index, uint8_t *dst) {
     }
     return len;
 }
-
