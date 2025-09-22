@@ -2837,8 +2837,20 @@ int osd_update_motion_zones(int group_id)
         uint32_t b = (configured_color >> 8) & 0xFF;
 
         /* Map color to nearest supported palette */
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-        /* T23 IMPOsdColour supports RED, BLACK, GREEN, YELLOW only */
+#if defined(PLATFORM_T20)
+        /* T20 lineRectData supports only OSD_WHITE, OSD_BLACK, OSD_RED */
+        uint32_t osd_color;
+        if (r > 200 && g < 100 && b < 100) {
+            osd_color = OSD_RED;
+        } else if (r < 100 && g > 200 && b < 100) {
+            osd_color = OSD_WHITE; /* fallback: GREEN not supported for lines */
+        } else if (r > 200 && g > 200 && b > 200) {
+            osd_color = OSD_WHITE; /* white-ish -> WHITE */
+        } else {
+            osd_color = OSD_BLACK;
+        }
+#elif defined(PLATFORM_T23)
+        /* T23 IMPOsdColour supports RED, BLACK, GREEN, YELLOW */
         uint32_t osd_color;
         if (r > 200 && g < 100 && b < 100) {
             osd_color = OSD_RED;
