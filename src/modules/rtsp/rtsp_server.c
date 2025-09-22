@@ -1020,15 +1020,11 @@ int rtsp_server_send_frame(rtsp_server_t* server,
             } else if (nal_count == 1) {
                 /* Single-pack frame - check if it's an IDR frame */
                 extern struct chn_conf chn[FS_CHN_NUM];
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-                bool is_hevc_client = (client->video_channel < FS_CHN_NUM) ? (chn[client->video_channel].payloadType == PT_H265) : false;
-#else
-                IMPEncoderEncType enc_type = IMP_ENC_TYPE_AVC;
-                if (client->video_channel < FS_CHN_NUM) {
-                    enc_type = (chn[client->video_channel].payloadType >> 24);
+                hal_enc_attr_t a;
+                bool is_hevc_client = false;
+                if (client->video_channel < FS_CHN_NUM && hal_enc_get_attr(client->video_channel, &a) == 0) {
+                    is_hevc_client = (a.payload == HAL_PT_H265);
                 }
-                bool is_hevc_client = (enc_type == IMP_ENC_TYPE_HEVC);
-#endif
 
                 /* Extract NAL unit data (skip start codes) */
                 const uint8_t* nal_data = (const uint8_t*) data;
