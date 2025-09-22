@@ -1083,15 +1083,11 @@ int rtsp_server_send_frame(rtsp_server_t* server,
 
                 /* Extract NAL type using SDK approach */
                 extern struct chn_conf chn[FS_CHN_NUM];
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-                bool is_hevc_client2 = (client->video_channel < FS_CHN_NUM) ? (chn[client->video_channel].payloadType == PT_H265) : false;
-#else
-                IMPEncoderEncType enc_type = IMP_ENC_TYPE_AVC; /* Default */
-                if (client->video_channel < FS_CHN_NUM) {
-                    enc_type = (chn[client->video_channel].payloadType >> 24);
+                hal_enc_attr_t a2;
+                bool is_hevc_client2 = false;
+                if (client->video_channel < FS_CHN_NUM && hal_enc_get_attr(client->video_channel, &a2) == 0) {
+                    is_hevc_client2 = (a2.payload == HAL_PT_H265);
                 }
-                bool is_hevc_client2 = (enc_type == IMP_ENC_TYPE_HEVC);
-#endif
 
                 uint8_t nal_type = 0;
                 bool is_key_frame = false;

@@ -26,7 +26,7 @@ const hal_caps_t* hal_caps(void) {
 static inline IMPPayloadType map_payload(hal_payload_t pt) {
     switch (pt) {
         case HAL_PT_JPEG: return PT_JPEG;
-        case HAL_PT_H265: return PT_H265; /* Most T20 do not support HEVC; caps=false */
+        case HAL_PT_H265: return PT_H264; /* No PT_H265 on T20; caps.has_hevc=false */
         case HAL_PT_H264:
         default:          return PT_H264;
     }
@@ -69,7 +69,7 @@ int hal_enc_create(int ch, const hal_enc_attr_t *a) {
     attr.rcAttr.maxGop = a->gop;
     attr.rcAttr.attrRcMode.rcMode = map_rc(a->rc_mode);
 
-    attr.bEnableIvdc = false;
+
 
     return IMP_Encoder_CreateChn(ch, &attr);
 }
@@ -83,7 +83,8 @@ int hal_enc_register(int group, int ch) {
 }
 
 int hal_enc_unregister(int group, int ch) {
-    return IMP_Encoder_UnRegisterChn(group, ch);
+    (void)group;
+    return IMP_Encoder_UnRegisterChn(ch);
 }
 
 int hal_enc_start(int ch) {
@@ -131,7 +132,6 @@ int hal_enc_get_attr(int ch, hal_enc_attr_t *a) {
 
     switch (attr.encAttr.enType) {
         case PT_JPEG: a->payload = HAL_PT_JPEG; break;
-        case PT_H265: a->payload = HAL_PT_H265; break;
         default:      a->payload = HAL_PT_H264; break;
     }
     a->width   = attr.encAttr.picWidth;
@@ -203,4 +203,3 @@ uint32_t hal_stream_copy_pack(const hal_stream_t *s, int index, uint8_t *dst) {
     memcpy(dst, (const void*)pk->virAddr, pk->length);
     return pk->length;
 }
-

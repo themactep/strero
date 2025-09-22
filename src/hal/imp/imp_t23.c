@@ -26,7 +26,7 @@ const hal_caps_t* hal_caps(void) {
 static inline IMPPayloadType map_payload(hal_payload_t pt) {
     switch (pt) {
         case HAL_PT_JPEG: return PT_JPEG;
-        case HAL_PT_H265: return PT_H265; /* Some T23 SDKs do not support HEVC; guarded by caps */
+        case HAL_PT_H265: return PT_H264; /* No PT_H265 on public T23 SDKs; caps.has_hevc=false */
         case HAL_PT_H264:
         default:          return PT_H264;
     }
@@ -136,7 +136,6 @@ int hal_enc_get_attr(int ch, hal_enc_attr_t *a) {
     /* Map back a minimal subset */
     switch (attr.encAttr.enType) {
         case PT_JPEG: a->payload = HAL_PT_JPEG; break;
-        case PT_H265: a->payload = HAL_PT_H265; break;
         default:      a->payload = HAL_PT_H264; break;
     }
     a->width   = attr.encAttr.picWidth;
