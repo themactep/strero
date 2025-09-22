@@ -590,7 +590,7 @@ static void* photosensing_control_thread(void* arg)
                 /* After switching to night vision, take the minimum value of 20 gb_gain samples
                  * as the reference value gb_gain_record for switching back to day mode */
                 for (i = 0; i < 20; i++) {
-#if defined(PLATFORM_T20) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
                     IMP_ISP_Tuning_GetWB_Statis(&wb);
 #else
                     IMP_ISP_Tuning_GetWB_GOL_Statis(&wb);
