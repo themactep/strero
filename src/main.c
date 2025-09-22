@@ -170,7 +170,9 @@ int jpeg_init_channel(int jpeg_channel, int stream_index, int width, int height)
     channel_attr.encAttr.profile = 0; /* baseline (ignored for JPEG) */
     channel_attr.encAttr.picWidth = width;
     channel_attr.encAttr.picHeight = height;
+#if defined(PLATFORM_T31)
     channel_attr.bEnableIvdc = false;
+#endif
     channel_attr.rcAttr.outFrmRate.frmRateNum = imp_chn_attr_tmp->outFrmRateNum;
     channel_attr.rcAttr.outFrmRate.frmRateDen = imp_chn_attr_tmp->outFrmRateDen;
     channel_attr.rcAttr.maxGop = imp_chn_attr_tmp->outFrmRateNum;

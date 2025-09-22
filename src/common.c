@@ -85,7 +85,7 @@ static IMPPayloadType string_to_payload_type(const char* format_str)
     if (strcasecmp(format_str, "H264") == 0)
         return PT_H264;
     if (strcasecmp(format_str, "H265") == 0 || strcasecmp(format_str, "HEVC") == 0)
-        return PT_H265;
+        return PT_H264; /* No PT_H265 on some SDKs; treat as H264 here */
 
     IMP_LOG_WARN(TAG, "Unknown video format '%s', using H264", format_str);
     return PT_H264;
@@ -409,11 +409,7 @@ int apply_config_to_channels()
 
         IMP_LOG_INFO(TAG, "Channel 0: enabled=%d, format='%s' -> payloadType=0x%x (%s), %dx%d@%d/%dfps",
                     chn[0].enable, stream->format, chn[0].payloadType,
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-                    (chn[0].payloadType == PT_H265) ? "H265" : ((chn[0].payloadType == PT_H264) ? "H264" : "JPEG"),
-#else
-                    ((chn[0].payloadType >> 24) == IMP_ENC_TYPE_HEVC) ? "H265" : "H264",
-#endif
+                    (chn[0].payloadType == PT_JPEG) ? "JPEG" : "H264",
                     chn[0].fs_chn_attr.picWidth, chn[0].fs_chn_attr.picHeight,
                     chn[0].fs_chn_attr.outFrmRateNum, chn[0].fs_chn_attr.outFrmRateDen);
     }
@@ -448,11 +444,7 @@ int apply_config_to_channels()
 
         IMP_LOG_INFO(TAG, "Channel 1: enabled=%d, format='%s' -> payloadType=0x%x (%s), %dx%d@%d/%dfps, scaler=%s",
                     chn[1].enable, stream->format, chn[1].payloadType,
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-                    (chn[1].payloadType == PT_H265) ? "H265" : ((chn[1].payloadType == PT_H264) ? "H264" : "JPEG"),
-#else
-                    ((chn[1].payloadType >> 24) == IMP_ENC_TYPE_HEVC) ? "H265" : "H264",
-#endif
+                    (chn[1].payloadType == PT_JPEG) ? "JPEG" : "H264",
                     chn[1].fs_chn_attr.picWidth, chn[1].fs_chn_attr.picHeight,
                     chn[1].fs_chn_attr.outFrmRateNum, chn[1].fs_chn_attr.outFrmRateDen,
                     chn[1].fs_chn_attr.scaler.enable ? "enabled" : "disabled");

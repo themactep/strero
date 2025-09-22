@@ -770,16 +770,11 @@ int rtsp_server_send_frame(rtsp_server_t* server,
 
     /* Debug NAL types when clients are waiting for IDR frames */
     if (clients_waiting_for_idr && nal_count > 0) {
-        extern struct chn_conf chn[FS_CHN_NUM];
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-        bool is_hevc = (channel < FS_CHN_NUM) ? (chn[channel].payloadType == PT_H265) : false;
-#else
-        IMPEncoderEncType enc_type = IMP_ENC_TYPE_AVC;
-        if (channel < FS_CHN_NUM) {
-            enc_type = (chn[channel].payloadType >> 24);
+        hal_enc_attr_t a;
+        bool is_hevc = false;
+        if (channel < FS_CHN_NUM && hal_enc_get_attr(channel, &a) == 0) {
+            is_hevc = (a.payload == HAL_PT_H265);
         }
-        bool is_hevc = (enc_type == IMP_ENC_TYPE_HEVC);
-#endif
 
         for (int i = 0; i < nal_count && i < 3; i++) { /* Log first 3 NAL units */
             if (nal_offsets[i] < frame_size && nal_sizes[i] > 0) {
