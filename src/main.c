@@ -80,7 +80,11 @@ extern struct chn_conf chn[];
 bool check_another_instance_running();
 void cleanup_lock_file(void);
 
-static const IMPEncoderRcMode S_RC_METHOD = ENC_RC_MODE_CBR;
+#if defined(PLATFORM_T31)
+static const IMPEncoderRcMode S_RC_METHOD = IMP_ENC_RC_MODE_CBR;
+#else
+static const int S_RC_METHOD = ENC_RC_MODE_CBR;
+#endif
 
 /* Cleanup lock file on program exit */
 void cleanup_lock_file(void)
@@ -684,7 +688,7 @@ int main(int argc, char *argv[])
                                               target_fps_den,
                                               gop_length,
                                               2,
-                                              (S_RC_METHOD == ENC_RC_MODE_FIXQP) ? 25 : -1, /* Lower QP = better quality */
+                                              (S_RC_METHOD == IMP_ENC_RC_MODE_FIXQP) ? 25 : -1, /* Lower QP = better quality */
                                               uTargetBitRate);
             if (ret < 0) {
                 IMP_LOG_ERR(TAG, "IMP_Encoder_SetDefaultParam(%d) error!", chnNum);
@@ -696,8 +700,13 @@ int main(int argc, char *argv[])
             IMP_LOG_INFO(TAG, "Encoder channel %d configured: %dx%d@%d/%dfps, GOP=%d, bitrate=%dkbps, mode=%s",
                         chnNum, imp_chn_attr_tmp->picWidth, imp_chn_attr_tmp->picHeight,
                         target_fps_num, target_fps_den, gop_length, uTargetBitRate,
+#if defined(PLATFORM_T31)
+                        (S_RC_METHOD == IMP_ENC_RC_MODE_CBR) ? "CBR" :
+                        (S_RC_METHOD == IMP_ENC_RC_MODE_VBR) ? "VBR" : "FIXQP"
+#else
                         (S_RC_METHOD == ENC_RC_MODE_CBR) ? "CBR" :
                         (S_RC_METHOD == ENC_RC_MODE_VBR) ? "VBR" : "FIXQP"
+#endif
                         );
 #ifdef LOW_BITSTREAM
             IMPEncoderRcAttr* rcAttr = &channel_attr.rcAttr;
@@ -1097,11 +1106,19 @@ exit_cleanup:
     IMP_LOG_INFO(TAG, "JPEG encoder exited successfully");
 
     /* Step.c Encoder exit */
+#if defined(PLATFORM_T31)
+    IMPEncoderChnStat chn_stat;
+#else
     IMPEncoderCHNStat chn_stat;
+#endif
     for (i = 0; i < FS_CHN_NUM; i++) {
         if (chn[i].enable) {
             chnNum = chn[i].index;
+#if defined(PLATFORM_T31)
+            memset(&chn_stat, 0, sizeof(IMPEncoderChnStat));
+#else
             memset(&chn_stat, 0, sizeof(IMPEncoderCHNStat));
+#endif
             ret = IMP_Encoder_Query(chnNum, &chn_stat);
             if (ret < 0) {
                 IMP_LOG_ERR(TAG, "IMP_Encoder_Query(%d) error: %d", chnNum, ret);

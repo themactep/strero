@@ -53,7 +53,11 @@ void imp_log_fun(int level, int option, int output, const char* tag,
 
 #define TAG "COMMON"
 
-static const IMPEncoderRcMode S_RC_METHOD = ENC_RC_MODE_CBR;
+#if defined(PLATFORM_T31)
+static const IMPEncoderRcMode S_RC_METHOD = IMP_ENC_RC_MODE_CBR;
+#else
+static const int S_RC_METHOD = ENC_RC_MODE_CBR;
+#endif
 
 /* Global HTTP server state for endpoint compatibility */
 bool http_server_running = false;
@@ -467,7 +471,11 @@ int jpeg_exit(void)
     int i = 0;
     int ret = 0;
     int jpeg_channel = 0;
+#if defined(PLATFORM_T31)
+    IMPEncoderChnStat chn_stat;
+#else
     IMPEncoderCHNStat chn_stat;
+#endif
 
     /* Clean up JPEG channels that were created for configured streams */
     extern struct streamer_config* g_config;
@@ -475,7 +483,11 @@ int jpeg_exit(void)
         for (i = 0; i < g_config->stream_count && i < FS_CHN_NUM; i++) {
             if (g_config->streams[i].enabled) {
                 jpeg_channel = FS_CHN_NUM + i; /* Same numbering as in jpeg_init_channel */
+#if defined(PLATFORM_T31)
+                memset(&chn_stat, 0, sizeof(IMPEncoderChnStat));
+#else
                 memset(&chn_stat, 0, sizeof(IMPEncoderCHNStat));
+#endif
 
                 /* Check if channel is registered */
                 ret = IMP_Encoder_Query(jpeg_channel, &chn_stat);
