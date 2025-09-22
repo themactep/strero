@@ -209,15 +209,16 @@ static int apply_imp_params(const imp_control_params_t* params)
         IMP_LOG_ERR(TAG, "Failed to set hue to %d: %d", params->hue, ret);
         return -1;
     }
-#else
-    (void)ret;
-#endif
 
     ret = IMP_ISP_Tuning_SetAeComp(params->ae_compensation);
     if (ret < 0) {
         IMP_LOG_ERR(TAG, "Failed to set AE compensation to %d: %d", params->ae_compensation, ret);
         return -1;
     }
+#else
+    /* Not available on non-T31 SDKs; retain cached value only */
+    (void)ret;
+#endif
 
     ret = IMP_ISP_Tuning_SetSinterStrength(params->noise_reduction_2d);
     if (ret < 0) {
@@ -363,9 +364,6 @@ static int get_current_imp_params(imp_control_params_t* params)
         IMP_LOG_ERR(TAG, "Failed to get hue: %d", ret);
         return -1;
     }
-#else
-    params->hue = g_imp_control_state.current_params.hue;
-#endif
 
     int ae_comp;
     ret = IMP_ISP_Tuning_GetAeComp(&ae_comp);
@@ -374,6 +372,10 @@ static int get_current_imp_params(imp_control_params_t* params)
         return -1;
     }
     params->ae_compensation = (unsigned char)ae_comp;
+#else
+    params->hue = g_imp_control_state.current_params.hue;
+    params->ae_compensation = g_imp_control_state.current_params.ae_compensation;
+#endif
 
     /* Note: Noise reduction and flip parameters don't have get functions in T31X IMP API */
     /* We'll use cached values from our internal state */
