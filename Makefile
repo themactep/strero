@@ -187,6 +187,8 @@ else ifneq (,$(findstring -DPLATFORM_T21,$(CFLAGS)))
 C_SOURCES_CORE          += $(SRC_DIR)/hal/imp/imp_t21.c
 else ifneq (,$(findstring -DPLATFORM_T20,$(CFLAGS)))
 C_SOURCES_CORE          += $(SRC_DIR)/hal/imp/imp_t20.c
+else ifneq (,$(findstring -DPLATFORM_T10,$(CFLAGS)))
+C_SOURCES_CORE          += $(SRC_DIR)/hal/imp/imp_t20.c
 endif
 
 # Module source files (conditionally included based on feature flags)
@@ -384,7 +386,7 @@ $(TARGET): $(OBJECTS) $(VERSION_FILE)
 # Phony Targets
 # =============================================================================
 
-.PHONY: all clean distclean t31 t23 t20 install
+.PHONY: all clean distclean t31 t23 t20 t21 t30 t10 install
 
 # Default Target
 # --------------
@@ -410,6 +412,12 @@ t20:
 	@echo "Building for T20 hardware with T20 SDK..."
 	$(MAKE) CFLAGS="$(CFLAGS) -DPLATFORM_T20" $(TARGET)
 	@echo "Build complete: T20 hardware + T20 SDK"
+
+# Standard T10 hardware with T20 SDK
+t10:
+	@echo "Building for T10 hardware with T20 SDK..."
+	$(MAKE) CFLAGS="$(CFLAGS) -DPLATFORM_T10" $(TARGET)
+	@echo "Build complete: T10 hardware + T20 SDK"
 
 # Standard T21 hardware with T21 SDK
 t21:

@@ -166,7 +166,7 @@ int jpeg_init_channel(int jpeg_channel, int stream_index, int width, int height)
     /* Use the frame source channel attributes from the corresponding video stream */
     imp_chn_attr_tmp = &chn[stream_index].fs_chn_attr;
 
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30) || defined(PLATFORM_T10)
     IMPEncoderCHNAttr channel_attr;
     memset(&channel_attr, 0, sizeof(IMPEncoderCHNAttr));
     channel_attr.encAttr.enType = PT_JPEG;
@@ -584,7 +584,7 @@ int main(int argc, char *argv[])
 
     /* Encoder init */
     IMPFSChnAttr* imp_chn_attr_tmp;
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30) || defined(PLATFORM_T10)
     IMPEncoderCHNAttr channel_attr;
 #else
     IMPEncoderChnAttr channel_attr;
@@ -595,7 +595,7 @@ int main(int argc, char *argv[])
         if (chn[i].enable) {
             chnNum = chn[i].index;
             imp_chn_attr_tmp = &chn[i].fs_chn_attr;
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30) || defined(PLATFORM_T10)
             memset(&channel_attr, 0, sizeof(IMPEncoderCHNAttr));
 #else
             memset(&channel_attr, 0, sizeof(IMPEncoderChnAttr));
@@ -667,7 +667,7 @@ int main(int argc, char *argv[])
             }
 #endif
 
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30) || defined(PLATFORM_T10)
             /* Build channel_attr manually for non-T31 */
             channel_attr.encAttr.enType = chn[i].payloadType;
             channel_attr.encAttr.bufSize = 0; /* auto */
