@@ -24,6 +24,8 @@
 #include "../../common.h"
 #include "../../config.h"
 #include "rtsp_server.h"
+#include "hal/imp.h"
+
 
 /* TLS includes for RTSPS support */
 #ifdef RTSPS_BACKEND_OPENSSL
@@ -712,16 +714,11 @@ int rtsp_server_send_frame(rtsp_server_t* server,
     /* Check if this is an IDR frame and manage GOP cache */
     bool is_idr_frame = false;
     /* Use SDK approach to determine codec type */
-    extern struct chn_conf chn[FS_CHN_NUM];
-#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
-    bool is_hevc = (channel < FS_CHN_NUM) ? (chn[channel].payloadType == PT_H265) : false;
-#else
-    IMPEncoderEncType enc_type = IMP_ENC_TYPE_AVC; /* Default */
-    if (channel < FS_CHN_NUM) {
-        enc_type = (chn[channel].payloadType >> 24);
+    hal_enc_attr_t a;
+    bool is_hevc = false;
+    if (channel < FS_CHN_NUM && hal_enc_get_attr(channel, &a) == 0) {
+        is_hevc = (a.payload == HAL_PT_H265);
     }
-    bool is_hevc = (enc_type == IMP_ENC_TYPE_HEVC);
-#endif
 
     /* Check for IDR frame based on SDK codec type - check ALL NAL units */
     for (int i = 0; i < nal_count; i++) {
