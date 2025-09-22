@@ -17,6 +17,7 @@ obj/modules/rtmp_client/rtmp_client.o: src/modules/rtmp_client/rtmp_client.c src
 		-I$(LIBIMP_INC_DIR)/imp \
 		-I$(LIBIMP_INC_DIR)/sysutils \
 		-I./include \
+		-I./src \
 		-isystem $(THIRDPARTY_INC_DIR) \
 		-c $< -o $@
 
@@ -27,6 +28,7 @@ obj/modules/rtmp_client/rtmp_consumer.o: src/modules/rtmp_client/rtmp_consumer.c
 		-I$(LIBIMP_INC_DIR)/imp \
 		-I$(LIBIMP_INC_DIR)/sysutils \
 		-I./include \
+		-I./src \
 		-isystem $(THIRDPARTY_INC_DIR) \
 		-c $< -o $@
 
