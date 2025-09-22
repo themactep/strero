@@ -15,6 +15,7 @@ obj/modules/image_grab/image_grab_module.o: src/modules/image_grab/image_grab_mo
 		-I$(LIBIMP_INC_DIR) \
 		-I$(LIBIMP_INC_DIR)/imp \
 		-I$(LIBIMP_INC_DIR)/sysutils \
+		-I./include \
 		-isystem $(THIRDPARTY_INC_DIR) \
 		-c $< -o $@
 
@@ -24,6 +25,7 @@ obj/modules/image_grab/image_grab_http.o: src/modules/image_grab/image_grab_http
 		-I$(LIBIMP_INC_DIR) \
 		-I$(LIBIMP_INC_DIR)/imp \
 		-I$(LIBIMP_INC_DIR)/sysutils \
+		-I./include \
 		-isystem $(THIRDPARTY_INC_DIR) \
 		-c $< -o $@
 

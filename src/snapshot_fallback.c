@@ -21,6 +21,8 @@
 #include <imp/imp_encoder.h>
 #include <imp/imp_framesource.h>
 
+#include "hal/imp.h"
+
 #ifdef ENABLE_HTTP_MODULE
 #include "modules/http/http_module.h"
 #endif
@@ -120,6 +122,76 @@ static int capture_channel_snapshot(int channel, const char* output_path)
         return -1;
     }
 
+#if defined(PLATFORM_T31)
+    /* T31 path via HAL: get stream and copy packs handling wrap-around internally */
+    hal_stream_t hs = {0};
+    ret = hal_stream_get(jpeg_channel, &hs, 1);
+    if (ret < 0) {
+        IMP_LOG_ERR(TAG, "HAL: Failed to get JPEG stream from channel %d: %d", channel, ret);
+        IMP_Encoder_StopRecvPic(jpeg_channel);
+        return -1;
+    }
+
+    int packCount = hal_stream_pack_count(&hs);
+    if (packCount <= 0) {
+        IMP_LOG_WARN(TAG, "HAL: No JPEG data available for channel %d", channel);
+        hal_stream_release(jpeg_channel, &hs);
+        IMP_Encoder_StopRecvPic(jpeg_channel);
+        return -1;
+    }
+
+    /* Write JPEG data to file */
+    FILE* fp = fopen(output_path, "wb");
+    if (!fp) {
+        IMP_LOG_ERR(TAG, "Failed to open output file: %s", output_path);
+        hal_stream_release(jpeg_channel, &hs);
+        return -1;
+    }
+
+    /* Determine maximum pack size to allocate a reusable buffer */
+    uint32_t max_len = 0;
+    for (int i = 0; i < packCount; i++) {
+        uint32_t l = hal_stream_pack_length(&hs, i);
+        if (l > max_len) max_len = l;
+    }
+    uint8_t *buf = max_len ? (uint8_t*)malloc(max_len) : NULL;
+    if (max_len && !buf) {
+        fclose(fp);
+        hal_stream_release(jpeg_channel, &hs);
+        IMP_Encoder_StopRecvPic(jpeg_channel);
+        return -1;
+    }
+
+    size_t total_written = 0;
+    for (int i = 0; i < packCount; i++) {
+        uint32_t l = hal_stream_pack_length(&hs, i);
+        if (l == 0) continue;
+        if (buf) {
+            uint32_t copied = hal_stream_copy_pack(&hs, i, buf);
+            size_t w = fwrite(buf, 1, copied, fp);
+            total_written += w;
+            if (w != copied) {
+                IMP_LOG_WARN(TAG, "Partial write: %zu/%u bytes", w, copied);
+            }
+        }
+    }
+    if (buf) free(buf);
+
+    fclose(fp);
+    hal_stream_release(jpeg_channel, &hs);
+
+    /* Stop receiving pictures */
+    IMP_Encoder_StopRecvPic(jpeg_channel);
+
+    if (total_written > 0) {
+        IMP_LOG_INFO(TAG, "Snapshot saved (HAL): %s (%zu bytes)", output_path, total_written);
+        return 0;
+    } else {
+        IMP_LOG_ERR(TAG, "No data written to snapshot file (HAL): %s", output_path);
+        unlink(output_path);
+        return -1;
+    }
+#else
     /* Get JPEG stream from encoder */
     ret = IMP_Encoder_GetStream(jpeg_channel, &stream, 1);
     if (ret < 0) {
@@ -147,6 +219,14 @@ static int capture_channel_snapshot(int channel, const char* output_path)
     for (int i = 0; i < stream.packCount; i++) {
         IMPEncoderPack* pack = &stream.pack[i];
         if (pack->length > 0) {
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+            /* T23/T20: pack contains direct virtual address, no wrap-around handling */
+            size_t written = fwrite((void*)pack->virAddr, 1, pack->length, fp);
+            total_written += written;
+            if (written != pack->length) {
+                IMP_LOG_WARN(TAG, "Partial write: %zu/%u bytes", written, pack->length);
+            }
+#else
             uint32_t remSize = stream.streamSize - pack->offset;
             if (remSize < pack->length) {
                 /* Handle wrap-around */
@@ -164,6 +244,7 @@ static int capture_channel_snapshot(int channel, const char* output_path)
                     IMP_LOG_WARN(TAG, "Partial write: %zu/%u bytes", written, pack->length);
                 }
             }
+#endif
         }
     }
 
@@ -181,6 +262,7 @@ static int capture_channel_snapshot(int channel, const char* output_path)
         unlink(output_path); /* Remove empty file */
         return -1;
     }
+#endif
 }
 
 /* Worker thread for periodic snapshot capture */

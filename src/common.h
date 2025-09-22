@@ -128,7 +128,7 @@ typedef struct {
 struct chn_conf {
     unsigned int index;
     unsigned int enable;
-    IMPEncoderProfile payloadType;
+    IMPPayloadType payloadType;
     IMPFSChnAttr fs_chn_attr;
     IMPCell framesource_chn;
     IMPCell imp_encoder;
@@ -141,7 +141,7 @@ typedef struct {
 } streamInfo;
 
 typedef struct {
-    IMPEncoderEncType type;
+    IMPPayloadType type;
     IMPEncoderRcMode mode;
     uint16_t frameRate;
     uint16_t gopLength;

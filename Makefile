@@ -176,6 +176,15 @@ C_SOURCES_CORE          = $(SRC_DIR)/main.c \
                           $(SRC_DIR)/auth_utils.c \
                           $(SRC_DIR)/snapshot_fallback.c
 
+# HAL sources (platform-selected)
+ifneq (,$(findstring -DPLATFORM_T31,$(CFLAGS)))
+C_SOURCES_CORE          += $(SRC_DIR)/hal/imp/imp_t31.c
+else ifneq (,$(findstring -DPLATFORM_T23,$(CFLAGS)))
+C_SOURCES_CORE          += $(SRC_DIR)/hal/imp/imp_t23.c
+else ifneq (,$(findstring -DPLATFORM_T20,$(CFLAGS)))
+C_SOURCES_CORE          += $(SRC_DIR)/hal/imp/imp_t20.c
+endif
+
 # Module source files (conditionally included based on feature flags)
 C_SOURCES_MODULES       =
 
@@ -356,6 +365,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(VERSION_FILE)
 		-I$(LIBIMP_INC_DIR) \
 		-I$(LIBIMP_INC_DIR)/imp \
 		-I$(LIBIMP_INC_DIR)/sysutils \
+		-I./include \
 		-isystem $(THIRDPARTY_INC_DIR) \
 		-c $< -o $@
 
@@ -369,7 +379,7 @@ $(TARGET): $(OBJECTS) $(VERSION_FILE)
 # Phony Targets
 # =============================================================================
 
-.PHONY: all clean distclean t31 install
+.PHONY: all clean distclean t31 t23 t20 install
 
 # Default Target
 # --------------
@@ -383,6 +393,18 @@ t31:
 	@echo "Building for T31 hardware with T31 SDK..."
 	$(MAKE) CFLAGS="$(CFLAGS) -DPLATFORM_T31" $(TARGET)
 	@echo "Build complete: T31 hardware + T31 SDK"
+
+# Standard T23 hardware with T23 SDK
+t23:
+	@echo "Building for T23 hardware with T23 SDK..."
+	$(MAKE) CFLAGS="$(CFLAGS) -DPLATFORM_T23" $(TARGET)
+	@echo "Build complete: T23 hardware + T23 SDK"
+
+# Standard T20 hardware with T20 SDK
+t20:
+	@echo "Building for T20 hardware with T20 SDK..."
+	$(MAKE) CFLAGS="$(CFLAGS) -DPLATFORM_T20" $(TARGET)
+	@echo "Build complete: T20 hardware + T20 SDK"
 
 # Clean Build Artifacts
 # ---------------------

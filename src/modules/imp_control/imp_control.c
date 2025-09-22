@@ -18,10 +18,8 @@
 #include "imp_control.h"
 #include "../../common.h"
 
-#ifdef ENABLE_HTTP
 #include "../http/http_router.h"
 #include "../http/http_module.h"
-#endif
 #include "../../config.h"
 #include "../../module_system.h"
 

@@ -28,7 +28,7 @@ Use `./build.sh` script to build and copy the compiled binary to the NFS share.
 
 Mount the share on the camera.
 ```bash
-mount -o nolock 192.168.1.61:/hoem/paul/nfs /mnt/nfs
+mount -o nolock 192.168.88.20:/home/paul/nfs /mnt/nfs
 ```
 
 Then run every newly compiled binary directly from the mount

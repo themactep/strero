@@ -20,10 +20,8 @@
 #endif
 #include "metrics_module.h"
 
-#ifdef ENABLE_HTTP
 #include "../http/http_router.h"
 #include "../http/http_module.h"
-#endif
 
 #define TAG "METRICS_MODULE"
 

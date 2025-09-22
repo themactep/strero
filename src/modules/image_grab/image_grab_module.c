@@ -10,9 +10,12 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <imp/imp_common.h>
+
 #include <imp/imp_encoder.h>
 #include <imp/imp_framesource.h>
 
+#include "hal/imp.h"
 #include "../../common.h"
 #include "../../module_system.h"
 #include "image_grab_module.h"
@@ -197,7 +200,6 @@ const char* image_grab_result_string(image_grab_result_t result)
 static image_grab_result_t grab_jpeg_frame(image_grab_request_t* request)
 {
     int jpeg_channel = 4 + request->channel;  /* JPEG channels are 4 and 5 */
-    IMPEncoderStream stream;
     int ret;
 
     IMP_LOG_DBG(TAG, "Capturing JPEG frame from channel %d (JPEG channel %d)",
@@ -212,36 +214,43 @@ static image_grab_result_t grab_jpeg_frame(image_grab_request_t* request)
     IMP_LOG_DBG(TAG, "Started receiving pictures for JPEG channel %d", jpeg_channel);
 
     /* Poll for JPEG frame */
-    ret = IMP_Encoder_PollingStream(jpeg_channel, g_image_grab_state.config.timeout_ms);
+    ret = hal_stream_poll(jpeg_channel, g_image_grab_state.config.timeout_ms);
     if (ret < 0) {
         IMP_LOG_ERR(TAG, "JPEG polling timeout on channel %d", jpeg_channel);
         IMP_Encoder_StopRecvPic(jpeg_channel);  /* Stop receiving on timeout */
         return IMAGE_GRAB_ERROR_TIMEOUT;
     }
 
-    ret = IMP_Encoder_GetStream(jpeg_channel, &stream, 1);
+    hal_stream_t hs = {0};
+    ret = hal_stream_get(jpeg_channel, &hs, 1);
     if (ret < 0) {
         IMP_LOG_ERR(TAG, "Failed to get JPEG stream from channel %d", jpeg_channel);
         IMP_Encoder_StopRecvPic(jpeg_channel);  /* Stop receiving on error */
         return IMAGE_GRAB_ERROR_CAPTURE_FAILED;
     }
 
+    /* Determine frame size across packs */
+    int packs = hal_stream_pack_count(&hs);
+    uint32_t frame_size = 0;
+    for (int i = 0; i < packs; ++i) frame_size += hal_stream_pack_length(&hs, i);
+
     /* Check buffer size */
-    if (stream.streamSize > request->buffer_size) {
-        IMP_LOG_ERR(TAG, "JPEG frame size %u exceeds buffer size %zu",
-                    stream.streamSize, request->buffer_size);
-        IMP_Encoder_ReleaseStream(jpeg_channel, &stream);
+    if (frame_size > request->buffer_size) {
+        IMP_LOG_ERR(TAG, "JPEG frame size %u exceeds buffer size %zu", frame_size, request->buffer_size);
+        hal_stream_release(jpeg_channel, &hs);
         IMP_Encoder_StopRecvPic(jpeg_channel);  /* Stop receiving on error */
         return IMAGE_GRAB_ERROR_BUFFER_TOO_SMALL;
     }
 
-    /* Copy JPEG data */
-    void* jpeg_data = (void*)(uintptr_t)stream.virAddr;
-    memcpy(request->output_buffer, jpeg_data, stream.streamSize);
-    *request->actual_size = stream.streamSize;
+    /* Copy JPEG data pack-by-pack (handles wrap-around internally) */
+    size_t offset = 0;
+    for (int i = 0; i < packs; ++i) {
+        offset += hal_stream_copy_pack(&hs, i, (uint8_t*)request->output_buffer + offset);
+    }
+    *request->actual_size = offset;
 
     /* Release stream */
-    IMP_Encoder_ReleaseStream(jpeg_channel, &stream);
+    hal_stream_release(jpeg_channel, &hs);
 
     /* Stop receiving pictures */
     IMP_Encoder_StopRecvPic(jpeg_channel);

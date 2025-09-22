@@ -356,7 +356,11 @@ static int process_frame_from_encoder(int channel)
 
         /* Create frame info */
         frame_info_t frame = {0};
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+        frame.data = (uint8_t*)pack->virAddr;
+#else
         frame.data = (uint8_t*)stream.virAddr + pack->offset;
+#endif
         frame.size = pack->length;
         frame.channel = channel;
 

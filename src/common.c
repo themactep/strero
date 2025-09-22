@@ -53,7 +53,7 @@ void imp_log_fun(int level, int option, int output, const char* tag,
 
 #define TAG "COMMON"
 
-static const IMPEncoderRcMode S_RC_METHOD = IMP_ENC_RC_MODE_CBR;
+static const IMPEncoderRcMode S_RC_METHOD = ENC_RC_MODE_CBR;
 
 /* Global HTTP server state for endpoint compatibility */
 bool http_server_running = false;
@@ -76,26 +76,26 @@ static int bitrate_sp[STREAM_TYPE_NUM] = {0};
 // #define VIDEO_STREAM_TIMEOUT 1000
 
 /* Helper functions to convert string config values to enums */
-static IMPEncoderProfile string_to_payload_type(const char* format_str)
+static IMPPayloadType string_to_payload_type(const char* format_str)
 {
     if (!format_str || strlen(format_str) == 0) {
-        return IMP_ENC_PROFILE_AVC_MAIN; /* Use main profile for CABAC support */
+        return PT_H264;
     }
 
     if (strcasecmp(format_str, "H264") == 0)
-        return IMP_ENC_PROFILE_AVC_MAIN; /* Use main profile for RTMP/CABAC compatibility */
+        return PT_H264;
     if (strcasecmp(format_str, "H265") == 0 || strcasecmp(format_str, "HEVC") == 0)
-        return IMP_ENC_PROFILE_HEVC_MAIN;
+        return PT_H265;
 
-    IMP_LOG_WARN(TAG, "Unknown video format '%s', using H264 main profile", format_str);
-    return IMP_ENC_PROFILE_AVC_MAIN;
+    IMP_LOG_WARN(TAG, "Unknown video format '%s', using H264", format_str);
+    return PT_H264;
 }
 
 struct chn_conf chn[FS_CHN_NUM] = {
     {
         .index = 0,
         .enable = 1,
-        .payloadType = IMP_ENC_PROFILE_AVC_BASELINE,
+        .payloadType = PT_H264,
         .fs_chn_attr = {
             .pixFmt = PIX_FMT_NV12,
             .outFrmRateNum = SENSOR_FRAME_RATE_NUM,
@@ -120,7 +120,7 @@ struct chn_conf chn[FS_CHN_NUM] = {
     {
         .index = 1,
         .enable = 1,
-        .payloadType = IMP_ENC_PROFILE_AVC_BASELINE,
+        .payloadType = PT_H264,
         .fs_chn_attr = {
             .pixFmt = PIX_FMT_NV12,
             .outFrmRateNum = SENSOR_FRAME_RATE_NUM,
@@ -145,7 +145,7 @@ struct chn_conf chn[FS_CHN_NUM] = {
     {
         .index = 2,
         .enable = 0,
-        .payloadType = IMP_ENC_PROFILE_JPEG,
+        .payloadType = PT_JPEG,
         .fs_chn_attr = {
             .pixFmt = PIX_FMT_NV12,
             .outFrmRateNum = SENSOR_FRAME_RATE_NUM,
@@ -170,7 +170,7 @@ struct chn_conf chn[FS_CHN_NUM] = {
     {
         .index = 3,
         .enable = 1,
-        .payloadType = IMP_ENC_PROFILE_AVC_BASELINE,
+        .payloadType = PT_H264,
         .fs_chn_attr = {
             .pixFmt = PIX_FMT_NV12,
             .outFrmRateNum = SENSOR_FRAME_RATE_NUM,
@@ -409,7 +409,11 @@ int apply_config_to_channels()
 
         IMP_LOG_INFO(TAG, "Channel 0: enabled=%d, format='%s' -> payloadType=0x%x (%s), %dx%d@%d/%dfps",
                     chn[0].enable, stream->format, chn[0].payloadType,
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+                    (chn[0].payloadType == PT_H265) ? "H265" : ((chn[0].payloadType == PT_H264) ? "H264" : "JPEG"),
+#else
                     ((chn[0].payloadType >> 24) == IMP_ENC_TYPE_HEVC) ? "H265" : "H264",
+#endif
                     chn[0].fs_chn_attr.picWidth, chn[0].fs_chn_attr.picHeight,
                     chn[0].fs_chn_attr.outFrmRateNum, chn[0].fs_chn_attr.outFrmRateDen);
     }
@@ -444,7 +448,11 @@ int apply_config_to_channels()
 
         IMP_LOG_INFO(TAG, "Channel 1: enabled=%d, format='%s' -> payloadType=0x%x (%s), %dx%d@%d/%dfps, scaler=%s",
                     chn[1].enable, stream->format, chn[1].payloadType,
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+                    (chn[1].payloadType == PT_H265) ? "H265" : ((chn[1].payloadType == PT_H264) ? "H264" : "JPEG"),
+#else
                     ((chn[1].payloadType >> 24) == IMP_ENC_TYPE_HEVC) ? "H265" : "H264",
+#endif
                     chn[1].fs_chn_attr.picWidth, chn[1].fs_chn_attr.picHeight,
                     chn[1].fs_chn_attr.outFrmRateNum, chn[1].fs_chn_attr.outFrmRateDen,
                     chn[1].fs_chn_attr.scaler.enable ? "enabled" : "disabled");
@@ -467,7 +475,7 @@ int jpeg_exit(void)
     int i = 0;
     int ret = 0;
     int jpeg_channel = 0;
-    IMPEncoderChnStat chn_stat;
+    IMPEncoderCHNStat chn_stat;
 
     /* Clean up JPEG channels that were created for configured streams */
     extern struct streamer_config* g_config;
@@ -475,7 +483,7 @@ int jpeg_exit(void)
         for (i = 0; i < g_config->stream_count && i < FS_CHN_NUM; i++) {
             if (g_config->streams[i].enabled) {
                 jpeg_channel = FS_CHN_NUM + i; /* Same numbering as in jpeg_init_channel */
-                memset(&chn_stat, 0, sizeof(IMPEncoderChnStat));
+                memset(&chn_stat, 0, sizeof(IMPEncoderCHNStat));
 
                 /* Check if channel is registered */
                 ret = IMP_Encoder_Query(jpeg_channel, &chn_stat);

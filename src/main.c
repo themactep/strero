@@ -32,7 +32,9 @@ static int g_soft_ps_running = 1;
 /* IMP headers */
 #include <imp/imp_audio.h>
 #include <imp/imp_common.h>
+#if defined(PLATFORM_T31)
 #include <imp/imp_dmic.h>
+#endif
 #include <imp/imp_encoder.h>
 #include <imp/imp_framesource.h>
 #include <imp/imp_isp.h>
@@ -78,7 +80,7 @@ extern struct chn_conf chn[];
 bool check_another_instance_running();
 void cleanup_lock_file(void);
 
-static const IMPEncoderRcMode S_RC_METHOD = IMP_ENC_RC_MODE_CBR;
+static const IMPEncoderRcMode S_RC_METHOD = ENC_RC_MODE_CBR;
 
 /* Cleanup lock file on program exit */
 void cleanup_lock_file(void)
@@ -155,11 +157,26 @@ bool check_another_instance_running()
 int jpeg_init_channel(int jpeg_channel, int stream_index, int width, int height)
 {
     int ret = 0;
-    IMPEncoderChnAttr channel_attr;
     IMPFSChnAttr* imp_chn_attr_tmp;
 
     /* Use the frame source channel attributes from the corresponding video stream */
     imp_chn_attr_tmp = &chn[stream_index].fs_chn_attr;
+
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+    IMPEncoderCHNAttr channel_attr;
+    memset(&channel_attr, 0, sizeof(IMPEncoderCHNAttr));
+    channel_attr.encAttr.enType = PT_JPEG;
+    channel_attr.encAttr.bufSize = 0; /* auto */
+    channel_attr.encAttr.profile = 0; /* baseline (ignored for JPEG) */
+    channel_attr.encAttr.picWidth = width;
+    channel_attr.encAttr.picHeight = height;
+    channel_attr.bEnableIvdc = false;
+    channel_attr.rcAttr.outFrmRate.frmRateNum = imp_chn_attr_tmp->outFrmRateNum;
+    channel_attr.rcAttr.outFrmRate.frmRateDen = imp_chn_attr_tmp->outFrmRateDen;
+    channel_attr.rcAttr.maxGop = imp_chn_attr_tmp->outFrmRateNum;
+    channel_attr.rcAttr.attrRcMode.rcMode = ENC_RC_MODE_FIXQP;
+#else
+    IMPEncoderChnAttr channel_attr;
     memset(&channel_attr, 0, sizeof(IMPEncoderChnAttr));
     ret = IMP_Encoder_SetDefaultParam(&channel_attr,
                                       IMP_ENC_PROFILE_JPEG,
@@ -177,6 +194,7 @@ int jpeg_init_channel(int jpeg_channel, int stream_index, int width, int height)
         return -1;
     }
     IMP_LOG_DBG(TAG, "Set default JPEG parameters for channel %d: %dx%d", jpeg_channel, width, height);
+#endif
 
     /* Create Channel */
     ret = IMP_Encoder_CreateChn(jpeg_channel, &channel_attr);
@@ -197,43 +215,33 @@ int jpeg_init_channel(int jpeg_channel, int stream_index, int width, int height)
     return 0;
 }
 
-static int stream_start(stream_info_t* info)
+static int stream_start_channel(int channel)
 {
-    if (!info) {
-        IMP_LOG_ERR(TAG, "Invalid stream info for stream start");
-        return -1;
-    }
-
-    IMP_LOG_DBG(TAG, "Starting stream on channel %d", info->stream_num);
+    IMP_LOG_DBG(TAG, "Starting stream on channel %d", channel);
 
     /* Start encoder receiving pictures */
-    int ret = IMP_Encoder_StartRecvPic(info->stream_num);
+    int ret = IMP_Encoder_StartRecvPic(channel);
     if (ret < 0) {
-        IMP_LOG_ERR(TAG, "IMP_Encoder_StartRecvPic(%d) failed", info->stream_num);
+        IMP_LOG_ERR(TAG, "IMP_Encoder_StartRecvPic(%d) failed", channel);
         return -1;
     }
 
-    IMP_LOG_DBG(TAG, "Stream started successfully on channel %d", info->stream_num);
+    IMP_LOG_DBG(TAG, "Stream started successfully on channel %d", channel);
     return 0;
 }
 
-static int stream_stop(stream_info_t* info)
+static int stream_stop_channel(int channel)
 {
-    if (!info) {
-        IMP_LOG_ERR(TAG, "Invalid stream info for stream stop");
-        return -1;
-    }
-
-    IMP_LOG_DBG(TAG, "Stopping stream on channel %d", info->stream_num);
+    IMP_LOG_DBG(TAG, "Stopping stream on channel %d", channel);
 
     /* Stop encoder receiving pictures */
-    int ret = IMP_Encoder_StopRecvPic(info->stream_num);
+    int ret = IMP_Encoder_StopRecvPic(channel);
     if (ret < 0) {
-        IMP_LOG_ERR(TAG, "IMP_Encoder_StopRecvPic(%d) failed", info->stream_num);
+        IMP_LOG_ERR(TAG, "IMP_Encoder_StopRecvPic(%d) failed", channel);
         return -1;
     }
 
-    IMP_LOG_DBG(TAG, "Stream stopped successfully on channel %d", info->stream_num);
+    IMP_LOG_DBG(TAG, "Stream stopped successfully on channel %d", channel);
     return 0;
 }
 
@@ -573,14 +581,22 @@ int main(int argc, char *argv[])
 
     /* Encoder init */
     IMPFSChnAttr* imp_chn_attr_tmp;
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+    IMPEncoderCHNAttr channel_attr;
+#else
     IMPEncoderChnAttr channel_attr;
+#endif
     int chnNum = 0;
 
     for (i = 0; i < FS_CHN_NUM; i++) {
         if (chn[i].enable) {
             chnNum = chn[i].index;
             imp_chn_attr_tmp = &chn[i].fs_chn_attr;
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+            memset(&channel_attr, 0, sizeof(IMPEncoderCHNAttr));
+#else
             memset(&channel_attr, 0, sizeof(IMPEncoderChnAttr));
+#endif
 
             /* Optimize stream buffer count for 64MB performance vs memory balance */
             int stream_buffer_count = is_low_memory_device() ? 2 : 6;
@@ -596,6 +612,7 @@ int main(int argc, char *argv[])
 
             /* Reduce stream buffer size for low-memory devices */
             uint32_t stream_buf_size = is_low_memory_device() ? 256 * 1024 : 512 * 1024;
+#if !(defined(PLATFORM_T23) || defined(PLATFORM_T20))
             ret = IMP_Encoder_SetStreamBufSize(chnNum, stream_buf_size);
             if (ret < 0) {
                 IMP_LOG_ERR(TAG, "IMP_Encoder_SetStreamBufSize(%d, %u) failed: %d",
@@ -605,6 +622,7 @@ int main(int argc, char *argv[])
             IMP_LOG_INFO(TAG, "Channel %d: Set %dKB stream buffer size for %s device",
                          chnNum, stream_buf_size / 1024,
                          is_low_memory_device() ? "low-memory" : "normal");
+#endif
 
             IMP_LOG_INFO(TAG, "Channel %d: Set %d stream buffers, %u bytes each", chnNum, stream_buffer_count, stream_buf_size);
 
@@ -636,6 +654,7 @@ int main(int argc, char *argv[])
             uint32_t gop_length = g_config->sensor.fps; /* 1 second keyframe interval for streaming */
 
             /* Set CABAC entropy mode for Main Profile (better compression for RTMP) */
+#if !(defined(PLATFORM_T23) || defined(PLATFORM_T20))
             IMPEncoderEncType enc_type = (chn[i].payloadType >> 24);
             if (enc_type == IMP_ENC_TYPE_AVC) {
                 ret = IMP_Encoder_SetChnEntropyMode(chnNum, IMP_ENC_ENTROPY_MODE_CABAC);
@@ -643,7 +662,20 @@ int main(int argc, char *argv[])
                     IMP_LOG_WARN(TAG, "Failed to set CABAC entropy mode for channel %d, using default", chnNum);
                 }
             }
+#endif
 
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+            /* Build channel_attr manually for T23 */
+            channel_attr.encAttr.enType = chn[i].payloadType;
+            channel_attr.encAttr.bufSize = 0; /* auto */
+            channel_attr.encAttr.profile = (chn[i].payloadType == PT_H264) ? 1 : 0; /* MP for H.264, 0 otherwise */
+            channel_attr.encAttr.picWidth = imp_chn_attr_tmp->picWidth;
+            channel_attr.encAttr.picHeight = imp_chn_attr_tmp->picHeight;
+            channel_attr.rcAttr.outFrmRate.frmRateNum = target_fps_num;
+            channel_attr.rcAttr.outFrmRate.frmRateDen = target_fps_den;
+            channel_attr.rcAttr.maxGop = gop_length;
+            channel_attr.rcAttr.attrRcMode.rcMode = S_RC_METHOD;
+#else
             ret = IMP_Encoder_SetDefaultParam(&channel_attr,
                                               chn[i].payloadType,
                                               S_RC_METHOD,
@@ -659,13 +691,20 @@ int main(int argc, char *argv[])
                 IMP_LOG_ERR(TAG, "IMP_Encoder_SetDefaultParam(%d) error!", chnNum);
                 return -1;
             }
+#endif
 
             /* Log encoder configuration for debugging */
             IMP_LOG_INFO(TAG, "Encoder channel %d configured: %dx%d@%d/%dfps, GOP=%d, bitrate=%dkbps, mode=%s",
                         chnNum, imp_chn_attr_tmp->picWidth, imp_chn_attr_tmp->picHeight,
                         target_fps_num, target_fps_den, gop_length, uTargetBitRate,
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+                        (S_RC_METHOD == ENC_RC_MODE_CBR) ? "CBR" :
+                        (S_RC_METHOD == ENC_RC_MODE_VBR) ? "VBR" : "FIXQP"
+#else
                         (S_RC_METHOD == IMP_ENC_RC_MODE_CBR) ? "CBR" :
-                        (S_RC_METHOD == IMP_ENC_RC_MODE_VBR) ? "VBR" : "FIXQP");
+                        (S_RC_METHOD == IMP_ENC_RC_MODE_VBR) ? "VBR" : "FIXQP"
+#endif
+                        );
 #ifdef LOW_BITSTREAM
             IMPEncoderRcAttr* rcAttr = &channel_attr.rcAttr;
             uTargetBitRate /= 2;
@@ -732,12 +771,16 @@ int main(int argc, char *argv[])
                 return -1;
             }
 
-            /* Configure GOP size explicitly to ensure keyframes are generated */
+            /* Configure GOP size explicitly to ensure keyframes are generated (T31 only) */
+#if !(defined(PLATFORM_T23) || defined(PLATFORM_T20))
             extern int IMP_Encoder_SetChnGopLength(int encChn, int iGopLength);
             ret = IMP_Encoder_SetChnGopLength(chnNum, gop_length);
             if (ret < 0) {
                 IMP_LOG_WARN(TAG, "Failed to set GOP length for channel %d: %d", chnNum, ret);
             }
+#else
+            /* T23: no API, continue */
+#endif
 
             /* Request immediate IDR frame to ensure keyframes are generated */
             extern int IMP_Encoder_RequestIDR(int encChn);
@@ -1062,11 +1105,11 @@ exit_cleanup:
     IMP_LOG_INFO(TAG, "JPEG encoder exited successfully");
 
     /* Step.c Encoder exit */
-    IMPEncoderChnStat chn_stat;
+    IMPEncoderCHNStat chn_stat;
     for (i = 0; i < FS_CHN_NUM; i++) {
         if (chn[i].enable) {
             chnNum = chn[i].index;
-            memset(&chn_stat, 0, sizeof(IMPEncoderChnStat));
+            memset(&chn_stat, 0, sizeof(IMPEncoderCHNStat));
             ret = IMP_Encoder_Query(chnNum, &chn_stat);
             if (ret < 0) {
                 IMP_LOG_ERR(TAG, "IMP_Encoder_Query(%d) error: %d", chnNum, ret);

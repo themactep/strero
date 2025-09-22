@@ -12,6 +12,8 @@
 #include <unistd.h>
 
 #include <arpa/inet.h>
+#include <imp/imp_common.h>
+
 #include <imp/imp_encoder.h>
 #include <sys/socket.h>
 #include <sysutils/su_base.h>
@@ -19,6 +21,8 @@
 #include "../../config.h"
 #include "../../common.h"
 #include "onvif_module.h"
+
+#include "../http/http_module.h"
 
 #ifdef ENABLE_HTTP
 #include "../http/http_module.h"

@@ -713,11 +713,15 @@ int rtsp_server_send_frame(rtsp_server_t* server,
     bool is_idr_frame = false;
     /* Use SDK approach to determine codec type */
     extern struct chn_conf chn[FS_CHN_NUM];
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+    bool is_hevc = (channel < FS_CHN_NUM) ? (chn[channel].payloadType == PT_H265) : false;
+#else
     IMPEncoderEncType enc_type = IMP_ENC_TYPE_AVC; /* Default */
-
     if (channel < FS_CHN_NUM) {
         enc_type = (chn[channel].payloadType >> 24);
     }
+    bool is_hevc = (enc_type == IMP_ENC_TYPE_HEVC);
+#endif
 
     /* Check for IDR frame based on SDK codec type - check ALL NAL units */
     for (int i = 0; i < nal_count; i++) {
@@ -725,7 +729,7 @@ int rtsp_server_send_frame(rtsp_server_t* server,
             const uint8_t* nal_data = data + nal_offsets[i];
             size_t nal_size = nal_sizes[i];
 
-            if (enc_type == IMP_ENC_TYPE_HEVC) {
+            if (is_hevc) {
                 /* H.265 IDR detection */
                 if (nal_size >= 2) {
                     uint8_t nal_type = (nal_data[0] >> 1) & 0x3F;
@@ -770,18 +774,23 @@ int rtsp_server_send_frame(rtsp_server_t* server,
     /* Debug NAL types when clients are waiting for IDR frames */
     if (clients_waiting_for_idr && nal_count > 0) {
         extern struct chn_conf chn[FS_CHN_NUM];
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+        bool is_hevc = (channel < FS_CHN_NUM) ? (chn[channel].payloadType == PT_H265) : false;
+#else
         IMPEncoderEncType enc_type = IMP_ENC_TYPE_AVC;
         if (channel < FS_CHN_NUM) {
             enc_type = (chn[channel].payloadType >> 24);
         }
+        bool is_hevc = (enc_type == IMP_ENC_TYPE_HEVC);
+#endif
 
         for (int i = 0; i < nal_count && i < 3; i++) { /* Log first 3 NAL units */
             if (nal_offsets[i] < frame_size && nal_sizes[i] > 0) {
                 const uint8_t* nal_data = data + nal_offsets[i];
-                if (enc_type == IMP_ENC_TYPE_HEVC && nal_sizes[i] >= 2) {
+                if (is_hevc && nal_sizes[i] >= 2) {
                     uint8_t nal_type = (nal_data[0] >> 1) & 0x3F;
                     // IMP_LOG_DBG(TAG, "H.265 NAL unit %d: type=%d, size=%zu", i, nal_type, nal_sizes[i]);
-                } else if (enc_type == IMP_ENC_TYPE_AVC && nal_sizes[i] >= 1) {
+                } else if (!is_hevc && nal_sizes[i] >= 1) {
                     uint8_t nal_type = nal_data[0] & 0x1F;
                     // IMP_LOG_DBG(TAG, "H.264 NAL unit %d: type=%d, size=%zu", i, nal_type, nal_sizes[i]);
                 }
@@ -796,7 +805,7 @@ int rtsp_server_send_frame(rtsp_server_t* server,
             const uint8_t* nal_data = data + nal_offsets[i];
             size_t nal_size = nal_sizes[i];
 
-            if (enc_type == IMP_ENC_TYPE_HEVC) {
+            if (is_hevc) {
                 /* H.265 parameter sets */
                 if (nal_size >= 2) {
                     uint8_t nal_type = (nal_data[0] >> 1) & 0x3F;
@@ -966,11 +975,7 @@ int rtsp_server_send_frame(rtsp_server_t* server,
         if (clients_need_idr) {
             /* Analyze the single NAL unit to see if it's important for H.265 */
             extern struct chn_conf chn[FS_CHN_NUM];
-            IMPEncoderEncType enc_type = IMP_ENC_TYPE_AVC; /* Default */
-
-            if (channel < FS_CHN_NUM) {
-                enc_type = (chn[channel].payloadType >> 24);
-            }
+            bool is_hevc_local = is_hevc;
 
             /* Extract NAL unit data (skip start codes) */
             const uint8_t* nal_data = (const uint8_t*) data;
@@ -986,12 +991,12 @@ int rtsp_server_send_frame(rtsp_server_t* server,
             }
 
             bool is_important_nal = false;
-            if (enc_type == IMP_ENC_TYPE_HEVC && nal_size >= 2) {
+            if (is_hevc_local && nal_size >= 2) {
                 /* H.265 NAL unit analysis */
                 uint8_t nal_type = (nal_data[0] >> 1) & 0x3F;
                 /* VPS (32), SPS (33), PPS (34), IDR frames (19-21) */
                 is_important_nal = (nal_type >= 19 && nal_type <= 21) || (nal_type >= 32 && nal_type <= 34);
-            } else if (enc_type == IMP_ENC_TYPE_AVC && nal_size >= 1) {
+            } else if (!is_hevc_local && nal_size >= 1) {
                 /* H.264 NAL unit analysis */
                 uint8_t nal_type = nal_data[0] & 0x1F;
                 /* SPS (7), PPS (8), IDR (5) */
@@ -1023,11 +1028,15 @@ int rtsp_server_send_frame(rtsp_server_t* server,
             } else if (nal_count == 1) {
                 /* Single-pack frame - check if it's an IDR frame */
                 extern struct chn_conf chn[FS_CHN_NUM];
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+                bool is_hevc_client = (client->video_channel < FS_CHN_NUM) ? (chn[client->video_channel].payloadType == PT_H265) : false;
+#else
                 IMPEncoderEncType enc_type = IMP_ENC_TYPE_AVC;
-
                 if (client->video_channel < FS_CHN_NUM) {
                     enc_type = (chn[client->video_channel].payloadType >> 24);
                 }
+                bool is_hevc_client = (enc_type == IMP_ENC_TYPE_HEVC);
+#endif
 
                 /* Extract NAL unit data (skip start codes) */
                 const uint8_t* nal_data = (const uint8_t*) data;
@@ -1042,14 +1051,14 @@ int rtsp_server_send_frame(rtsp_server_t* server,
                     nal_size -= 3;
                 }
 
-                if (enc_type == IMP_ENC_TYPE_HEVC && nal_size >= 2) {
+                if (is_hevc_client && nal_size >= 2) {
                     /* H.265 IDR frame detection */
                     uint8_t nal_type = (nal_data[0] >> 1) & 0x3F;
                     /* IDR frames: IDR_W_RADL (19), IDR_N_LP (20), CRA_NUT (21) */
                     if (nal_type >= 19 && nal_type <= 21) {
                         should_clear_idr = true;
                     }
-                } else if (enc_type == IMP_ENC_TYPE_AVC && nal_size >= 1) {
+                } else if (!is_hevc_client && nal_size >= 1) {
                     /* H.264 IDR frame detection */
                     uint8_t nal_type = nal_data[0] & 0x1F;
                     if (nal_type == 5) { /* IDR frame */
@@ -1086,17 +1095,21 @@ int rtsp_server_send_frame(rtsp_server_t* server,
 
                 /* Extract NAL type using SDK approach */
                 extern struct chn_conf chn[FS_CHN_NUM];
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+                bool is_hevc_client2 = (client->video_channel < FS_CHN_NUM) ? (chn[client->video_channel].payloadType == PT_H265) : false;
+#else
                 IMPEncoderEncType enc_type = IMP_ENC_TYPE_AVC; /* Default */
-
                 if (client->video_channel < FS_CHN_NUM) {
                     enc_type = (chn[client->video_channel].payloadType >> 24);
                 }
+                bool is_hevc_client2 = (enc_type == IMP_ENC_TYPE_HEVC);
+#endif
 
                 uint8_t nal_type = 0;
                 bool is_key_frame = false;
                 bool is_parameter_set = false;
 
-                if (enc_type == IMP_ENC_TYPE_HEVC) {
+                if (is_hevc_client2) {
                     /* H.265 NAL unit header is 2 bytes */
                     if (nal_size >= 2) {
                         nal_type = (nal_data[0] >> 1) & 0x3F;

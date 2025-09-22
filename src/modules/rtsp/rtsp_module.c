@@ -25,6 +25,8 @@
 #include "../rtmp_client/rtmp_client.h"
 #endif
 
+#include "hal/imp.h"
+
 #define TAG "RTSP_MODULE"
 
 /* Module state */
@@ -90,7 +92,11 @@ static void rtsp_frame_callback(rtsp_server_t* server, void* user_data)
 
     /* Process frames for each enabled channel */
     for (int i = 0; i < FS_CHN_NUM; i++) {
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+        if (!chn[i].enable || chn[i].payloadType == PT_JPEG) {
+#else
         if (!chn[i].enable || chn[i].payloadType == IMP_ENC_PROFILE_JPEG) {
+#endif
             // if (callback_count <= 3) {
             //     IMP_LOG_INFO(TAG, "Skipping channel %d: enabled=%s, payloadType=%d",
             //                 i, chn[i].enable ? "true" : "false", chn[i].payloadType);
@@ -131,6 +137,60 @@ static void rtsp_frame_callback(rtsp_server_t* server, void* user_data)
         /* Poll for frames using native IMP buffering with frame-rate appropriate timeout */
         int ret = IMP_Encoder_PollingStream(i, frame_interval_ms);
         if (ret >= 0) {
+#if defined(PLATFORM_T31)
+            /* HAL-backed T31 path: assemble contiguous buffer from packs */
+            hal_stream_t hs = {0};
+            ret = hal_stream_get(i, &hs, 1);
+            if (ret >= 0) {
+                uint32_t frame_size = 0;
+                int packCount = hal_stream_pack_count(&hs);
+                for (int j = 0; j < packCount; j++) {
+                    frame_size += hal_stream_pack_length(&hs, j);
+                }
+
+                struct timeval encoder_timestamp;
+                if (packCount > 0) {
+                    uint64_t ts = hal_stream_pack_timestamp_us(&hs, 0);
+                    encoder_timestamp.tv_sec = ts / 1000000;
+                    encoder_timestamp.tv_usec = ts % 1000000;
+                } else {
+                    encoder_timestamp.tv_sec = 0;
+                    encoder_timestamp.tv_usec = 0;
+                }
+
+                static uint8_t* frame_buf = NULL;
+                static uint32_t frame_buf_cap = 0;
+                if (frame_buf_cap < frame_size) {
+                    uint8_t* new_buf = (uint8_t*)realloc(frame_buf, frame_size);
+                    if (!new_buf) {
+#ifdef ENABLE_METRICS
+                        metrics_update_stream_frame(i, 0, true);
+#endif
+                        hal_stream_release(i, &hs);
+                        goto next_channel;
+                    }
+                    frame_buf = new_buf;
+                    frame_buf_cap = frame_size;
+                }
+
+                uint32_t offset = 0;
+                for (int j = 0; j < packCount; j++) {
+                    offset += hal_stream_copy_pack(&hs, j, frame_buf + offset);
+                }
+
+                rtsp_server_send_frame(server, i, frame_buf, frame_size, &encoder_timestamp);
+                module_rtsp_frame_callback_all(server, i, frame_buf, frame_size, &encoder_timestamp);
+#ifdef ENABLE_METRICS
+                metrics_update_stream_frame(i, frame_size, false);
+#endif
+
+                hal_stream_release(i, &hs);
+            } else {
+#ifdef ENABLE_METRICS
+                metrics_update_stream_frame(i, 0, true);
+#endif
+            }
+#else
             IMPEncoderStream stream;
             ret = IMP_Encoder_GetStream(i, &stream, 1);
             if (ret >= 0) {
@@ -145,27 +205,47 @@ static void rtsp_frame_callback(rtsp_server_t* server, void* user_data)
                 encoder_timestamp.tv_sec = (stream.packCount > 0) ? stream.pack[0].timestamp / 1000000 : 0;
                 encoder_timestamp.tv_usec = (stream.packCount > 0) ? stream.pack[0].timestamp % 1000000 : 0;
 
-                /* Send directly using native IMP buffering */
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+                /* T23/T20: stitch packs into a contiguous buffer */
+                static uint8_t* frame_buf = NULL;
+                static uint32_t frame_buf_cap = 0;
+                if (frame_buf_cap < frame_size) {
+                    uint8_t* new_buf = (uint8_t*)realloc(frame_buf, frame_size);
+                    if (!new_buf) {
+                        IMP_Encoder_ReleaseStream(i, &stream);
+                        goto next_channel;
+                    }
+                    frame_buf = new_buf;
+                    frame_buf_cap = frame_size;
+                }
+                uint32_t offset = 0;
+                for (int j = 0; j < stream.packCount; j++) {
+                    memcpy(frame_buf + offset, (void*)stream.pack[j].virAddr, stream.pack[j].length);
+                    offset += stream.pack[j].length;
+                }
+                rtsp_server_send_frame(server, i, frame_buf, frame_size, &encoder_timestamp);
+                module_rtsp_frame_callback_all(server, i, frame_buf, frame_size, &encoder_timestamp);
+#else
+                /* Non-T23/T20 legacy path */
                 rtsp_server_send_frame(server, i, (uint8_t*)stream.virAddr, frame_size, &encoder_timestamp);
-
-                /* Call module RTSP frame callback for THIS channel only - pass the frame data we already retrieved */
                 module_rtsp_frame_callback_all(server, i, (uint8_t*)stream.virAddr, frame_size, &encoder_timestamp);
+#endif
 
                 /* Update stream metrics */
 #ifdef ENABLE_METRICS
                 metrics_update_stream_frame(i, frame_size, false);
 #endif
 
-                /* Frame processed successfully */
-
                 IMP_Encoder_ReleaseStream(i, &stream);
             } else {
-                /* Track encoder errors */
 #ifdef ENABLE_METRICS
                 metrics_update_stream_frame(i, 0, true);
 #endif
             }
+#endif
         }
+
+        next_channel: ;
     }
 }
 
@@ -320,14 +400,15 @@ static int setup_rtsp_server(void)
                         i, g_config->streams[i].rtsp_endpoint,
                         stream_config.width, stream_config.height, stream_config.bitrate);
 
-            /* Use SDK approach to determine codec from channel configuration */
+            /* Determine codec from channel configuration */
             extern struct chn_conf chn[FS_CHN_NUM];
             if (i < FS_CHN_NUM) {
+#if defined(PLATFORM_T23)
+                stream_config.codec = (chn[i].payloadType == PT_H265) ? VIDEO_CODEC_H265 : VIDEO_CODEC_H264;
+#else
                 IMPEncoderEncType enc_type = (chn[i].payloadType >> 24);
                 stream_config.codec = (enc_type == IMP_ENC_TYPE_HEVC) ? VIDEO_CODEC_H265 : VIDEO_CODEC_H264;
-                // IMP_LOG_INFO(TAG, "Channel %d: payloadType=0x%x, enc_type=%d, codec=%s",
-                //            i, chn[i].payloadType, enc_type,
-                //            (stream_config.codec == VIDEO_CODEC_H265) ? "H265" : "H264");
+#endif
             } else {
                 stream_config.codec = VIDEO_CODEC_H264; /* Default */
             }

@@ -17,6 +17,7 @@ obj/modules/rtsp/rtsp_module.o: src/modules/rtsp/rtsp_module.c src/modules/rtsp/
 		-I$(LIBIMP_INC_DIR) \
 		-I$(LIBIMP_INC_DIR)/imp \
 		-I$(LIBIMP_INC_DIR)/sysutils \
+		-I./include \
 		-isystem $(THIRDPARTY_INC_DIR) \
 		-c $< -o $@
 
@@ -26,6 +27,7 @@ obj/modules/rtsp/rtsp_server.o: src/modules/rtsp/rtsp_server.c src/modules/rtsp/
 		-I$(LIBIMP_INC_DIR) \
 		-I$(LIBIMP_INC_DIR)/imp \
 		-I$(LIBIMP_INC_DIR)/sysutils \
+		-I./include \
 		-isystem $(THIRDPARTY_INC_DIR) \
 		-c $< -o $@
 
@@ -35,6 +37,7 @@ obj/modules/rtsp/rtsp_consumer.o: src/modules/rtsp/rtsp_consumer.c src/modules/r
 		-I$(LIBIMP_INC_DIR) \
 		-I$(LIBIMP_INC_DIR)/imp \
 		-I$(LIBIMP_INC_DIR)/sysutils \
+		-I./include \
 		-isystem $(THIRDPARTY_INC_DIR) \
 		-c $< -o $@
 

@@ -2836,7 +2836,21 @@ int osd_update_motion_zones(int group_id)
         uint32_t g = (configured_color >> 16) & 0xFF;
         uint32_t b = (configured_color >> 8) & 0xFF;
 
-        /* Map to closest predefined OSD color for T31 SDK */
+        /* Map color to nearest supported palette */
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+        /* T23 IMPOsdColour supports RED, BLACK, GREEN, YELLOW only */
+        uint32_t osd_color;
+        if (r > 200 && g < 100 && b < 100) {
+            osd_color = OSD_RED;
+        } else if (r < 100 && g > 200 && b < 100) {
+            osd_color = OSD_GREEN;
+        } else if (r > 200 && g > 200 && b > 200) {
+            osd_color = OSD_YELLOW;
+        } else {
+            osd_color = OSD_BLACK;
+        }
+#else
+        /* T31 palette includes BLUE and WHITE */
         uint32_t osd_color;
         if (r > 200 && g < 100 && b < 100) {
             osd_color = OSD_RED;    /* 0xffff0000 */
@@ -2849,6 +2863,7 @@ int osd_update_motion_zones(int group_id)
         } else {
             osd_color = OSD_BLACK;  /* 0xff000000 */
         }
+#endif
 
         IMP_LOG_INFO(TAG, "Drawing motion zone '%s' (%s): rect=(%d,%d) to (%d,%d), color=0x%08X->0x%08X",
                     zone->name, zone->type, zone_x, zone_y, zone_x + zone_w - 1, zone_y + zone_h - 1,

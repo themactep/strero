@@ -26,6 +26,8 @@
 #include "../../common.h"
 #include "../../config.h"
 
+#include "hal/imp.h"
+
 #define TAG "HTTP_MODULE"
 
 /* External references */
@@ -1126,7 +1128,11 @@ static int capture_snapshot(int channel, unsigned char** jpeg_data, unsigned int
 {
     int ret;
     IMPEncoderStream stream;
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+    IMPEncoderCHNAttr chn_attr;
+#else
     IMPEncoderChnAttr chn_attr;
+#endif
 
     /* Validate channel */
     if (channel < 0 || channel >= FS_CHN_NUM || !chn[channel].enable) {
@@ -1140,12 +1146,21 @@ static int capture_snapshot(int channel, unsigned char** jpeg_data, unsigned int
     /* Get current JPEG channel attributes and set high quality */
     ret = IMP_Encoder_GetChnAttr(jpeg_channel, &chn_attr);
     if (ret == 0) {
-        IMP_LOG_INFO(TAG, "JPEG channel %d: profile=%d, width=%d, height=%d",
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+        IMP_LOG_INFO(TAG, "JPEG channel %d: profile=%u, width=%u, height=%u",
                      jpeg_channel,
-                     chn_attr.encAttr.eProfile,
-                     chn_attr.encAttr.uWidth,
-                     chn_attr.encAttr.uHeight);
+                     chn_attr.encAttr.profile,
+                     chn_attr.encAttr.picWidth,
+                     chn_attr.encAttr.picHeight);
+#else
+        IMP_LOG_INFO(TAG, "JPEG channel %d: profile=%d, width=%d, height=%d",
+                    jpeg_channel,
+                    chn_attr.encAttr.eProfile,
+                    chn_attr.encAttr.uWidth,
+                    chn_attr.encAttr.uHeight);
+#endif
 
+#if !(defined(PLATFORM_T23) || defined(PLATFORM_T20))
         if (chn_attr.encAttr.eProfile == IMP_ENC_PROFILE_JPEG) {
             /* Use moderate quality for faster snapshots */
             ret = IMP_Encoder_SetChnQp(jpeg_channel, 25); /* Moderate QP = good quality + speed */
@@ -1155,6 +1170,7 @@ static int capture_snapshot(int channel, unsigned char** jpeg_data, unsigned int
                 IMP_LOG_WARN(TAG, "Failed to set JPEG QP to 25 for channel %d: %d", channel, ret);
             }
         }
+#endif
     } else {
         IMP_LOG_ERR(TAG, "Failed to get JPEG channel %d attributes: %d", jpeg_channel, ret);
     }
@@ -1174,6 +1190,47 @@ static int capture_snapshot(int channel, unsigned char** jpeg_data, unsigned int
         return -1;
     }
 
+#if defined(PLATFORM_T31)
+    /* T31 via HAL: get stream and copy packs with wrap-around handled in HAL */
+    hal_stream_t hs = {0};
+    ret = hal_stream_get(jpeg_channel, &hs, 1);
+    if (ret < 0) {
+        IMP_LOG_ERR(TAG, "HAL GetStream(%d) failed for snapshot", jpeg_channel);
+        IMP_Encoder_StopRecvPic(jpeg_channel);
+        return -1;
+    }
+
+    /* Calculate total size */
+    unsigned int total_size = 0;
+    int packCount = hal_stream_pack_count(&hs);
+    for (int i = 0; i < packCount; i++) {
+        total_size += hal_stream_pack_length(&hs, i);
+    }
+    if (total_size == 0) {
+        IMP_LOG_ERR(TAG, "Empty JPEG stream for channel %d (HAL)", channel);
+        hal_stream_release(jpeg_channel, &hs);
+        return -1;
+    }
+
+    *jpeg_data = (unsigned char*)malloc(total_size);
+    if (!*jpeg_data) {
+        IMP_LOG_ERR(TAG, "Failed to allocate %u bytes for JPEG snapshot", total_size);
+        hal_stream_release(jpeg_channel, &hs);
+        return -1;
+    }
+
+    unsigned int offset = 0;
+    for (int i = 0; i < packCount; i++) {
+        uint32_t len = hal_stream_pack_length(&hs, i);
+        if (len == 0) continue;
+        uint32_t copied = hal_stream_copy_pack(&hs, i, *jpeg_data + offset);
+        offset += copied;
+    }
+    *jpeg_size = offset;
+
+    hal_stream_release(jpeg_channel, &hs);
+    IMP_Encoder_StopRecvPic(jpeg_channel);
+#else
     /* Get JPEG stream (blocking mode) */
     ret = IMP_Encoder_GetStream(jpeg_channel, &stream, 1);
     if (ret < 0) {
@@ -1210,25 +1267,25 @@ static int capture_snapshot(int channel, unsigned char** jpeg_data, unsigned int
     for (int i = 0; i < stream.packCount; i++) {
         IMPEncoderPack* pack = &stream.pack[i];
         if (pack->length > 0) {
+#if defined(PLATFORM_T23) || defined(PLATFORM_T20)
+            memcpy(*jpeg_data + offset, (void*)pack->virAddr, pack->length);
+#else
             uint32_t remSize = stream.streamSize - pack->offset;
             if (remSize < pack->length) {
-                /* Handle wrap-around */
-                memcpy(*jpeg_data + offset, (void*) (stream.virAddr + pack->offset), remSize);
-                memcpy(*jpeg_data + offset + remSize, (void*) stream.virAddr, pack->length - remSize);
+                memcpy(*jpeg_data + offset, (void*)(stream.virAddr + pack->offset), remSize);
+                memcpy(*jpeg_data + offset + remSize, (void*)stream.virAddr, pack->length - remSize);
             } else {
-                /* Normal copy */
-                memcpy(*jpeg_data + offset, (void*) (stream.virAddr + pack->offset), pack->length);
+                memcpy(*jpeg_data + offset, (void*)(stream.virAddr + pack->offset), pack->length);
             }
+#endif
             offset += pack->length;
         }
     }
-    IMP_LOG_INFO(TAG, "Copied JPEG data for channel %d", channel);
-
     *jpeg_size = total_size;
 
-    /* Cleanup - release stream and stop receiving pictures */
     IMP_Encoder_ReleaseStream(jpeg_channel, &stream);
     IMP_Encoder_StopRecvPic(jpeg_channel);
+#endif
     IMP_LOG_INFO(TAG, "Released JPEG stream and stopped receiving for channel %d", channel);
 
     return 0;
