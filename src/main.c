@@ -765,15 +765,13 @@ int main(int argc, char *argv[])
                 return -1;
             }
 
-            /* Configure GOP size explicitly to ensure keyframes are generated (T31 only) */
-#if !(defined(PLATFORM_T23) || defined(PLATFORM_T20))
+            /* Configure GOP size explicitly on T31 only */
+#if defined(PLATFORM_T31)
             extern int IMP_Encoder_SetChnGopLength(int encChn, int iGopLength);
             ret = IMP_Encoder_SetChnGopLength(chnNum, gop_length);
             if (ret < 0) {
                 IMP_LOG_WARN(TAG, "Failed to set GOP length for channel %d: %d", chnNum, ret);
             }
-#else
-            /* T23: no API, continue */
 #endif
 
             /* Request immediate IDR frame to ensure keyframes are generated */
