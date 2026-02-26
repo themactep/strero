@@ -658,8 +658,18 @@ int main(int argc, char *argv[])
 
             /* Set CABAC entropy mode for Main Profile (better compression for RTMP) */
 #if defined(PLATFORM_T31)
-            IMPEncoderEncType enc_type = (chn[i].payloadType >> 24);
-            if (enc_type == IMP_ENC_TYPE_AVC) {
+            /* Map IMPPayloadType to the T31 IMPEncoderProfile required by IMP_Encoder_SetDefaultParam.
+             * PT_H264=1 and PT_JPEG=0 are IMPPayloadType values, not valid IMPEncoderProfile values.
+             * Passing PT_H264=1 directly causes "invalid profile(0x1)" from libimp. */
+            IMPEncoderProfile enc_profile;
+            if (chn[i].payloadType == PT_JPEG) {
+                enc_profile = IMP_ENC_PROFILE_JPEG;
+            } else if (chn[i].payloadType == PT_H265) {
+                enc_profile = IMP_ENC_PROFILE_HEVC_MAIN;
+            } else {
+                enc_profile = IMP_ENC_PROFILE_AVC_HIGH;
+            }
+            if (chn[i].payloadType != PT_JPEG) {
                 ret = IMP_Encoder_SetChnEntropyMode(chnNum, IMP_ENC_ENTROPY_MODE_CABAC);
                 if (ret < 0) {
                     IMP_LOG_WARN(TAG, "Failed to set CABAC entropy mode for channel %d, using default", chnNum);
@@ -680,7 +690,7 @@ int main(int argc, char *argv[])
             channel_attr.rcAttr.attrRcMode.rcMode = S_RC_METHOD;
 #else
             ret = IMP_Encoder_SetDefaultParam(&channel_attr,
-                                              chn[i].payloadType,
+                                              enc_profile,
                                               S_RC_METHOD,
                                               imp_chn_attr_tmp->picWidth,
                                               imp_chn_attr_tmp->picHeight,
