@@ -6,9 +6,10 @@ if [[ -z "$BOARD" ]]; then
 	exit 1
 fi
 
-THINGINO_DIR=$HOME/dev/thingino-firmware
-OVERRIDES_DIR=$HOME/dev/thingino-streamer
-OUTPUT_DIR=$HOME/output-dev/$BOARD
+BRANCH=master
+THINGINO_DIR=$HOME/thingino/firmware/$BRANCH
+OVERRIDES_DIR=$HOME/thingino/overrides/thingino-streamer
+OUTPUT_DIR=$THINGINO_DIR/output/$BRANCH/$BOARD
 SHARE_DIR=$HOME/nfs
 
 BUILDROOT_PACKAGE_DIR=$THINGINO_DIR/package/thingino-streamer
